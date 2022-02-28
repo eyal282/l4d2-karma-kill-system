@@ -2,15 +2,15 @@
 {
 	"Version"
 	{
-		"Latest"	"1.0"
+		"Latest"	"1.1"
 	}
 	
-	"Notes"	"Plugin Release"
+	"Notes"	"Major Overhaul"
 }
 	
 "Files"
 {
-	"Plugin"	"Path_SM/plugins/UsefulCommands.smx"
+	"Plugin"	"Path_SM/plugins/l4d2_karma_kill_system.smx"
 	
-	"Source"	"Path_SM/scripting/UsefulCommands.sp"
+	"Source"	"Path_SM/scripting/l4d2_karma_kill_system.sp"
 }
