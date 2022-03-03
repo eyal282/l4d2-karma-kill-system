@@ -1,12 +1,10 @@
-/* put the line below after all of the includes!
-#pragma newdecls required
-*/
-
 #pragma semicolon 1
 #include <left4dhooks>
 #include <sdkhooks>
 #include <sdktools>
 #include <sourcemod>
+
+#pragma newdecls required
 
 #undef REQUIRE_PLUGIN
 #undef REQUIRE_EXTENSIONS
@@ -16,14 +14,14 @@
 
 #define UPDATE_URL "https://github.com/eyal282/l4d2-karma-kill-system/blob/master/addons/sourcemod/updatefile.txt"
 
-#define PLUGIN_VERSION "1.2"
+#define PLUGIN_VERSION "1.3"
 
 #define TEST_DEBUG     0
 #define TEST_DEBUG_LOG 0
 
-// static const float CHARGE_CHECKING_INTERVAL	= 0.1;
-// static const float ANGLE_STRAIGHT_DOWN[3]	= { 90.0 , 0.0 , 0.0 };
-char SOUND_EFFECT[] = "./level/loud/climber.wav";
+float CHARGE_CHECKING_INTERVAL = 0.1;
+float ANGLE_STRAIGHT_DOWN[3]   = { 90.0, 0.0, 0.0 };
+char  SOUND_EFFECT[]           = "./level/loud/climber.wav";
 
 Handle cvarisEnabled            = INVALID_HANDLE;
 Handle cvarNoFallDamageOnCarry  = INVALID_HANDLE;
@@ -75,6 +73,7 @@ public Plugin myinfo =
 	version     = PLUGIN_VERSION,
 	url         = "http://forums.alliedmods.net/showthread.php?p=1239108"
 
+
 }
 
 public void
@@ -86,13 +85,11 @@ public void
 	HookEvent("tongue_grab", event_tongueGrabOrRelease, EventHookMode_Post);
 	HookEvent("tongue_release", event_tongueGrabOrRelease, EventHookMode_Post);
 	HookEvent("charger_impact", event_ChargerImpact);
-	HookEvent("player_hurt", Event_PlayerHurt, EventHookMode_Post);
 	HookEvent("player_hurt", CheckFallInHardRain, EventHookMode_Post);
 	HookEvent("player_death", event_playerDeathPre, EventHookMode_Pre);
 	HookEvent("round_start", RoundStart, EventHookMode_PostNoCopy);
 	HookEvent("success_checkpoint_button_used", DisallowCheckHardRain, EventHookMode_PostNoCopy);
 
-	RegConsoleCmd("sm_xyz", Command_XYZ);
 	CreateConVar("l4d2_karma_charge_version", PLUGIN_VERSION, " L4D2 Karma Charge Plugin Version ");
 	// triggeringHeight = 	CreateConVar("l4d2_karma_charge_height",	"475.0", 		" What Height is considered karma ");
 	karmaTime               = CreateConVar("l4d2_karma_charge_slowtime", "1.5", " How long does Time get slowed ");
@@ -120,6 +117,12 @@ public void
 		Updater_AddPlugin(UPDATE_URL);
 	}
 #endif
+}
+
+public void OnAllPluginsLoaded()
+{
+	if (!CommandExists("sm_xyz"))
+		RegConsoleCmd("sm_xyz", Command_XYZ);
 }
 
 public void OnClientPutInServer(int client)
@@ -210,36 +213,35 @@ public void _cvarChange(Handle convar, const char[] oldValue, const char[] newVa
 	// lethalHeight = 	GetConVarFloat(triggeringHeight);
 }
 
-public Action Event_PlayerHurt(Handle event, const char[] name, bool dontBroadcast)
+public void L4D2_OnPlayerFling_Post(int victim, int attacker, float vecDir[3])
 {
-	int victim   = GetClientOfUserId(GetEventInt(event, "userid"));
-	int attacker = GetClientOfUserId(GetEventInt(event, "attacker"));
-
 	if (victim < 1 || victim > MaxClients || attacker < 1 || attacker > MaxClients)
-		return Plugin_Continue;
+		return;
 
 	else if (GetClientTeam(victim) != 2 || GetClientTeam(attacker) != 3)
-		return Plugin_Continue;
+		return;
 
-	else if (GetEntPropEnt(victim, Prop_Send, "m_carryAttacker") != -1)
-		return Plugin_Continue;
+	L4D2ZombieClassType class = L4D2_GetPlayerZombieClass(attacker);
 
-	int Class = GetEntProp(attacker, Prop_Send, "m_zombieClass");
-
-	if (Class == 2)    // Boomer
+	if (class == L4D2ZombieClass_Boomer)    // Boomer
 	{
 		LastSlapper[victim]       = attacker;
 		BlockSlapChange[victim]   = true;
 		SlapRegisterTimer[victim] = CreateTimer(0.25, RegisterSlapDelay, victim, TIMER_FLAG_NO_MAPCHANGE);
 	}
-	else if (Class == 8)    // Tank
-	{
-		LastPuncher[victim]        = attacker;
-		BlockPunchChange[victim]   = true;
-		PunchRegisterTimer[victim] = CreateTimer(0.25, RegisterPunchDelay, victim, TIMER_FLAG_NO_MAPCHANGE);
-	}
+}
 
-	return Plugin_Continue;
+public void L4D_TankClaw_OnPlayerHit_Post(int tank, int claw, int victim)
+{
+	if (victim < 1 || victim > MaxClients || tank < 1 || tank > MaxClients)
+		return;
+
+	else if (GetClientTeam(victim) != 2 || GetClientTeam(tank) != 3)
+		return;
+
+	LastPuncher[victim]        = tank;
+	BlockPunchChange[victim]   = true;
+	PunchRegisterTimer[victim] = CreateTimer(0.25, RegisterPunchDelay, victim, TIMER_FLAG_NO_MAPCHANGE);
 }
 
 public Action CheckFallInHardRain(Handle event, const char[] name, bool dontBroadcast)
@@ -342,9 +344,6 @@ public Action RegisterCaptorDelay(Handle timer, any victim)
 
 public Action event_playerDeathPre(Handle event, const char[] name, bool dontBroadcast)
 {
-	static char MapName[50];
-	GetCurrentMap(MapName, sizeof(MapName) - 1);
-
 	int victim      = GetClientOfUserId(GetEventInt(event, "userid"));
 	int attacker    = GetClientOfUserId(GetEventInt(event, "attacker"));
 	int attackerent = GetEventInt(event, "attackerentid");
@@ -360,6 +359,8 @@ public Action event_playerDeathPre(Handle event, const char[] name, bool dontBro
 
 	else if (attacker > 0 && attacker <= MaxClients)    // ( attacker <= 0 && attacker > MaxClients ) || attacker == victim -> Attacker is not a player, attacker can be a player if the attacker is the victim.
 		return Plugin_Continue;
+
+	FixChargeTimeleftBug();
 
 	char Classname[50];
 	GetEdictClassname(attackerent, Classname, sizeof(Classname));
@@ -419,6 +420,33 @@ public Action event_playerDeathPre(Handle event, const char[] name, bool dontBro
 	return Plugin_Continue;
 }
 
+public void FixChargeTimeleftBug()
+{
+	for (int i = 1; i <= MaxClients; i++)
+	{
+		if (!IsClientInGame(i))
+			continue;
+
+		else if (!IsPlayerAlive(i))
+			continue;
+
+		else if (L4D_GetClientTeam(i) != L4DTeam_Infected)
+			continue;
+
+		else if (L4D2_GetPlayerZombieClass(i) != L4D2ZombieClass_Charger)
+			continue;
+
+		int iCustomAbility = L4D_GetPlayerCustomAbility(i);
+
+		// I have no clue why it's exactly 3600.0 when it bugs, but whatever.
+		if (GetEntPropFloat(iCustomAbility, Prop_Send, "m_duration") == 3600.0)
+		{
+			SetEntPropFloat(iCustomAbility, Prop_Send, "m_timestamp", GetGameTime());
+			SetEntPropFloat(iCustomAbility, Prop_Send, "m_duration", 0.0);
+		}
+	}
+}
+
 public Action ResetAbility(Handle hTimer, int client)
 {
 	int iEntity = GetEntPropEnt(client, Prop_Send, "m_customAbility");
@@ -451,7 +479,7 @@ public Action Command_XYZ(int client, int args)
 	float Origin[3];
 	GetEntPropVector(client, Prop_Data, "m_vecOrigin", Origin);
 
-	PrintToChat(client, "%f %f %f", Origin[0], Origin[1], Origin[2]);
+	PrintToChat(client, "%.4f, %.4f, %.4f", Origin[0], Origin[1], Origin[2]);
 
 	return Plugin_Continue;
 }
@@ -479,6 +507,9 @@ public void OnGameFrame()
 			continue;
 
 		else if (IsClientAffectedByFling(i))
+			continue;
+
+		else if (L4D_IsPlayerStaggering(i))
 			continue;
 
 		if (LastCharger[i] != 0 && !IsPinnedByCharger(i))
@@ -518,16 +549,16 @@ public Action event_ChargerGrab(Handle event, const char[] name, bool dontBroadc
 	LastCharger[victim] = client;
 
 	DebugPrintToAll("Charger Carry event caught, initializing timer");
-	/*
+
 	if (chargerTimer[client] != INVALID_HANDLE)
 	{
-	    CloseHandle(chargerTimer[client]);
-	    chargerTimer[client] = INVALID_HANDLE;
+		CloseHandle(chargerTimer[client]);
+		chargerTimer[client] = INVALID_HANDLE;
 	}
 
 	chargerTimer[client] = CreateTimer(CHARGE_CHECKING_INTERVAL, _timer_Check, client, TIMER_REPEAT | TIMER_FLAG_NO_MAPCHANGE);
 	TriggerTimer(chargerTimer[client], true);
-	*/
+
 	return Plugin_Continue;
 }
 
@@ -542,7 +573,7 @@ public Action event_GrabEnded(Handle event, const char[] name, bool dontBroadcas
 		chargerTimer[client] = INVALID_HANDLE;
 	}
 
-	static char MapName[50];
+	char MapName[50];
 	GetCurrentMap(MapName, sizeof(MapName));
 
 	if (StrEqual(MapName, "c10m4_mainstreet", false) && isEntityInsideFakeZone(client, -2720.0, -1665.0, -340.0, 1200.0, -75.0, 162.0) && GetEntProp(victim, Prop_Send, "m_isFallingFromLedge") == 0 && IsPlayerAlive(victim))
@@ -623,7 +654,7 @@ public Action event_jockeyRideEndPre(Handle event, const char[] name, bool dontB
 	int client = GetClientOfUserId(GetEventInt(event, "userid"));
 	int victim = GetClientOfUserId(GetEventInt(event, "victim"));
 
-	static char MapName[50];
+	char MapName[50];
 
 	GetCurrentMap(MapName, sizeof(MapName));
 
@@ -707,61 +738,83 @@ public Action EndLastSmoker(Handle timer, any victim)
 
 	return Plugin_Continue;
 }
-/*
+
 public Action _timer_Check(Handle timer, any client)
 {
-    if (!client || !IsClientInGame(client) || !IsPlayerAlive(client))
-    {
-        chargerTimer[client] = INVALID_HANDLE;
-        return Plugin_Stop;
-    }
+	if (!client || !IsClientInGame(client) || !IsPlayerAlive(client))
+	{
+		chargerTimer[client] = INVALID_HANDLE;
+		return Plugin_Stop;
+	}
 
-    if (GetEntityFlags(client) & FL_ONGROUND) return Plugin_Continue;
+	if (GetEntityFlags(client) & FL_ONGROUND) return Plugin_Continue;
 
-    float height = GetHeightAboveGround(client);
+	float fOrigin[3], fEndOrigin[3];
+	GetEntPropVector(client, Prop_Data, "m_vecOrigin", fOrigin);
 
-    DebugPrintToAll("Karma Check - Charger Height is now: %f", height);
+	ArrayList aEntities = new ArrayList(1);
 
-    if (height > lethalHeight)
-    {
-        AnnounceKarma(client, -1, "Charge");
-        chargerTimer[client] = INVALID_HANDLE;
-        return Plugin_Stop;
-    }
+	TR_TraceRayFilter(fOrigin, ANGLE_STRAIGHT_DOWN, MASK_SHOT, RayType_Infinite, TraceFilter_DontHitPlayers);
 
-    return Plugin_Continue;
+	TR_GetEndPosition(fEndOrigin);
+
+	TR_EnumerateEntities(fOrigin, fEndOrigin, PARTITION_SOLID_EDICTS | PARTITION_TRIGGER_EDICTS | PARTITION_STATIC_PROPS, RayType_EndPoint, TraceEnum_TriggerHurt, aEntities);
+
+	int iSize = GetArraySize(aEntities);
+	delete aEntities;
+
+	if (iSize > 0)
+	{
+		AnnounceKarma(client, -1, "Charge");
+		chargerTimer[client] = INVALID_HANDLE;
+		return Plugin_Stop;
+	}
+
+	return Plugin_Continue;
 }
 
-static float GetHeightAboveGround(int client)
+public bool TraceFilter_DontHitPlayers(int entity, int contentsMask)
 {
-    float pos[3];
-    GetClientAbsOrigin(client, pos);
-
-    // execute Trace straight down
-    Handle trace = TR_TraceRayFilterEx(pos, ANGLE_STRAIGHT_DOWN, MASK_SHOT, RayType_Infinite, _TraceFilter);
-
-    if (!TR_DidHit(trace))
-    {
-        LogError("Tracer Bug: Trace did not hit anything, WTF");
-    }
-
-    float vEnd[3];
-    TR_GetEndPosition(vEnd, trace); // retrieve our trace endpoint
-    CloseHandle(trace);
-
-    return GetVectorDistance(pos, vEnd, false);
+	return !IsEntityPlayer(entity);
 }
 
-public bool _TraceFilter(int entity, int contentsMask)
+public bool TraceEnum_TriggerHurt(int entity, ArrayList aEntities)
 {
-    if (!entity || !IsValidEntity(entity)) // dont let WORLD, or invalid entities be hit
-    {
-        return false;
-    }
+	// If we hit the world, stop enumerating.
+	if (!entity)
+		return false;
 
-    return true;
+	else if (!IsValidEdict(entity))
+		return false;
+
+	char sClassname[16];
+	GetEdictClassname(entity, sClassname, sizeof(sClassname));
+
+	// Also works for trigger_hurt_ghost because some maps wager on the fact trigger_hurt_ghost kills the charger and the survivors dies from the fall itself.
+	if (strncmp(sClassname, "trigger_hurt", 12) != 0)
+		return true;
+
+	TR_ClipCurrentRayToEntity(MASK_ALL, entity);
+
+	if (TR_GetEntityIndex() != entity)
+		return true;
+
+	float fDamage = GetEntPropFloat(entity, Prop_Data, "m_flDamage");
+
+	// Does it do incap damage?
+	if (fDamage < 100)
+		return true;
+
+	int iDamagetype = GetEntProp(entity, Prop_Data, "m_bitsDamageInflict");
+
+	// Does it simulate a fall or water?
+	if (iDamagetype != DMG_FALL && iDamagetype != DMG_DROWN)
+		return true;
+
+	aEntities.Push(entity);
+
+	return true;
 }
-*/
 void AnnounceKarma(int client, int victim = -1, char[] KarmaName)
 {
 	if (victim == -1 && GetEntProp(client, Prop_Send, "m_zombieClass") == 6)
@@ -789,14 +842,13 @@ void AnnounceKarma(int client, int victim = -1, char[] KarmaName)
 
 	BlockRegisterTimer[victim] = CreateTimer(15.0, RegisterCaptorDelay, victim, TIMER_FLAG_NO_MAPCHANGE);
 
-	if (cooldownTimer == INVALID_HANDLE)
+	if (GetConVarBool(cvarModeSwitch) || cooldownTimer != INVALID_HANDLE)
+		SlowChargeCouple(client);
+
+	else
 	{
 		cooldownTimer = CreateTimer(GetConVarFloat(cvarCooldown), RestoreSlowmo, _, TIMER_FLAG_NO_MAPCHANGE);
-		if (GetConVarBool(cvarModeSwitch))
-			SlowChargeCouple(client);
-
-		else
-			SlowTime();
+		SlowTime();
 	}
 
 	PrintToChatAll("\x03%N\x01 Karma %s'd\x04 %N\x01, for great justice!!", client, KarmaName, victim);
@@ -870,7 +922,7 @@ stock bool IsPinnedByCharger(int client)
 	return GetEntPropEnt(client, Prop_Send, "m_carryAttacker") != -1 || GetEntPropEnt(client, Prop_Send, "m_pummelAttacker") != -1;
 }
 
-static GetCarryVictim(int client)
+stock int GetCarryVictim(int client)
 {
 	int victim = GetEntPropEnt(client, Prop_Send, "m_carryVictim");
 	if (victim < 1
@@ -1091,4 +1143,15 @@ stock void RegisterCaptor(int victim)
 
 	if (smoker != 0)
 		LastSmoker[victim] = smoker;
+}
+
+stock bool IsEntityPlayer(int entity)
+{
+	if (entity <= 0)
+		return false;
+
+	else if (entity > MaxClients)
+		return false;
+
+	return true;
 }
