@@ -2,10 +2,11 @@
 {
 	"Version"
 	{
-		"Latest"	"1.3"
+		"Latest"	"1.4"
 	}
 	
 	"Notes"	"Another Major Overhaul - now instead of using height to determine a karma charge, a trigger_hurt below you will do it."
+	"Notes"	"Auto Exec Config"
 }
 	
 "Files"
