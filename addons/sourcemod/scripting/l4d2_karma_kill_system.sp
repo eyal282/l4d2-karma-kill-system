@@ -1,10 +1,11 @@
-#pragma semicolon 1
+#include <autoexecconfig>
 #include <left4dhooks>
 #include <sdkhooks>
 #include <sdktools>
 #include <sourcemod>
 
 #pragma newdecls required
+#pragma semicolon 1
 
 #undef REQUIRE_PLUGIN
 #undef REQUIRE_EXTENSIONS
@@ -14,7 +15,7 @@
 
 #define UPDATE_URL "https://github.com/eyal282/l4d2-karma-kill-system/blob/master/addons/sourcemod/updatefile.txt"
 
-#define PLUGIN_VERSION "1.3"
+#define PLUGIN_VERSION "1.4"
 
 #define TEST_DEBUG     0
 #define TEST_DEBUG_LOG 0
@@ -73,11 +74,9 @@ public Plugin myinfo =
 	version     = PLUGIN_VERSION,
 	url         = "http://forums.alliedmods.net/showthread.php?p=1239108"
 
+};
 
-}
-
-public void
-	OnPluginStart()
+public void OnPluginStart()
 {
 	HookEvent("charger_carry_start", event_ChargerGrab);
 	HookEvent("charger_carry_end", event_GrabEnded);
@@ -90,13 +89,21 @@ public void
 	HookEvent("round_start", RoundStart, EventHookMode_PostNoCopy);
 	HookEvent("success_checkpoint_button_used", DisallowCheckHardRain, EventHookMode_PostNoCopy);
 
-	CreateConVar("l4d2_karma_charge_version", PLUGIN_VERSION, " L4D2 Karma Charge Plugin Version ");
-	// triggeringHeight = 	CreateConVar("l4d2_karma_charge_height",	"475.0", 		" What Height is considered karma ");
-	karmaTime               = CreateConVar("l4d2_karma_charge_slowtime", "1.5", " How long does Time get slowed ");
-	cvarisEnabled           = CreateConVar("l4d2_karma_charge_enabled", "1", " Turn Karma Charge on and off ");
-	cvarNoFallDamageOnCarry = CreateConVar("l4d2_karma_charge_no_fall_damage_on_carry", "1", "Fixes this by disabling fall damage when carried: https://streamable.com/xuipb6");
-	cvarModeSwitch          = CreateConVar("l4d2_karma_charge_slowmode", "0", " 0 - Entire Server gets slowed, 1 - Only Charger and Survivor do ");
-	cvarCooldown            = CreateConVar("l4d2_karma_charge_cooldown", "0.0", "Non-decimal number that determines how long does it take for the next karma to freeze the entire map.");
+	AutoExecConfig(true, "l4d2_karma_kill_system");
+
+	CreateConVar("l4d2_karma_charge_version", PLUGIN_VERSION, " L4D2 Karma Charge Plugin Version ", FCVAR_DONTRECORD);
+	// triggeringHeight = 	AutoExecConfig_CreateConVar("l4d2_karma_charge_height",	"475.0", 		" What Height is considered karma ");
+	karmaTime               = AutoExecConfig_CreateConVar("l4d2_karma_charge_slowtime", "1.5", " How long does Time get slowed ");
+	cvarisEnabled           = AutoExecConfig_CreateConVar("l4d2_karma_charge_enabled", "1", " Turn Karma Charge on and off ");
+	cvarNoFallDamageOnCarry = AutoExecConfig_CreateConVar("l4d2_karma_charge_no_fall_damage_on_carry", "1", "Fixes this by disabling fall damage when carried: https://streamable.com/xuipb6");
+	cvarModeSwitch          = AutoExecConfig_CreateConVar("l4d2_karma_charge_slowmode", "0", " 0 - Entire Server gets slowed, 1 - Only Charger and Survivor do ");
+	cvarCooldown            = AutoExecConfig_CreateConVar("l4d2_karma_charge_cooldown", "0.0", "Non-decimal number that determines how long does it take for the next karma to freeze the entire map.");
+
+	// This makes an internal call to AutoExecConfig with the given configfile
+	AutoExecConfig_ExecuteFile();
+
+	// Cleaning should be done at the end
+	AutoExecConfig_CleanFile();
 
 	// public void KarmaKillSystem_OnKarmaEventPost(victim, attacker, const String:KarmaName[])
 	fw_OnKarmaEventPost = CreateGlobalForward("KarmaKillSystem_OnKarmaEventPost", ET_Ignore, Param_Cell, Param_Cell, Param_String);
@@ -111,6 +118,7 @@ public void
 
 		Func_OnClientPutInServer(i);
 	}
+
 #if defined _updater_included
 	if (LibraryExists("updater"))
 	{
