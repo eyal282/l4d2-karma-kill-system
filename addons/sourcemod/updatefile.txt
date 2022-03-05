@@ -2,10 +2,10 @@
 {
 	"Version"
 	{
-		"Latest"	"1.4"
+		"Latest"	"1.5"
 	}
 	
-	"Notes"	"Another Major Overhaul - now instead of using height to determine a karma charge, a trigger_hurt below you will do it."
+	"Notes"	"Third Major Overhaul - Bug fixes and jockey jump redux support, double charging won't allow spamming karma."
 	"Notes"	"Auto Exec Config"
 }
 	
