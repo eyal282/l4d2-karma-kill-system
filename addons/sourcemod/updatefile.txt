@@ -2,11 +2,10 @@
 {
 	"Version"
 	{
-		"Latest"	"1.5"
+		"Latest"	"1.6"
 	}
 	
-	"Notes"	"Third Major Overhaul - Bug fixes and jockey jump redux support, double charging won't allow spamming karma."
-	"Notes"	"Auto Exec Config"
+	"Notes"	"Fourth Major Overhaul - Karma kills are registered mid-air. Bird charge is back, known as the old karma charge."
 }
 	
 "Files"
