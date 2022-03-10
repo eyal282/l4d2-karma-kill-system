@@ -15,18 +15,22 @@
 
 #define UPDATE_URL "https://raw.githubusercontent.com/eyal282/l4d2-karma-kill-system/master/addons/sourcemod/updatefile.txt"
 
-#define PLUGIN_VERSION "1.5"
+#define PLUGIN_VERSION "1.6"
 
-#define TEST_DEBUG     0
-#define TEST_DEBUG_LOG 0
+// TEST_DEBUG is always 1 if the server's name contains "Test Server"
+bool TEST_DEBUG = false;
 
 // All of these must be 0.1 * n, basically 0.1, 0.2, 0.3, 0.4...
-// Jockey Jump uses seconds needed per 500 units.
-float JOCKEY_JUMP_SECONDS_NEEDED_AGAINST_LEDGE_HANG_PER_FORCE = 1.0;
+// All of these are seconds after you reach the height you jumped from.
+
+float preJumpHeight[MAXPLAYERS + 1];
+
+float JOCKEY_JUMP_SECONDS_NEEDED_AGAINST_LEDGE_HANG_PER_FORCE = 0.3;
 float IMPACT_SECONDS_NEEDED_AGAINST_LEDGE_HANG                = 0.3;
 float PUNCH_SECONDS_NEEDED_AGAINST_LEDGE_HANG                 = 0.3;
-float FLING_SECONDS_NEEDED_AGAINST_LEDGE_HANG                 = 0.7;
-float CHARGE_CHECKING_INTERVAL                                = 0.1;
+float FLING_SECONDS_NEEDED_AGAINST_LEDGE_HANG                 = 0.3;
+
+float CHARGE_CHECKING_INTERVAL = 0.1;
 
 float ANGLE_STRAIGHT_DOWN[3] = { 90.0, 0.0, 0.0 };
 char  SOUND_EFFECT[]         = "./level/loud/climber.wav";
@@ -38,6 +42,7 @@ Handle chargerTimer[MAXPLAYERS] = { INVALID_HANDLE, ... };
 Handle victimTimer[MAXPLAYERS]  = { INVALID_HANDLE, ... };
 
 Handle karmaPrefix           = INVALID_HANDLE;
+Handle karmaBirdCharge       = INVALID_HANDLE;
 Handle karmaSlowTimeOnServer = INVALID_HANDLE;
 Handle karmaSlowTimeOnCouple = INVALID_HANDLE;
 Handle karmaSlow             = INVALID_HANDLE;
@@ -54,8 +59,9 @@ int LastSlapper[MAXPLAYERS + 1];
 int LastPuncher[MAXPLAYERS + 1];
 int LastImpacter[MAXPLAYERS + 1];
 int LastSmoker[MAXPLAYERS + 1];
+int LastJumper[MAXPLAYERS + 1];
 
-float apexHeight[MAXPLAYERS + 1];
+float apexHeight[MAXPLAYERS + 1], apexFallDamage[MAXPLAYERS + 1];
 /* Blockers have two purposes:
 1. For the duration they are there, the last responsible karma maker cannot change.
 2. BlockAllChange must be active to register a karma that isn't height check based. This is because it is triggered upon the survivor being hurt.
@@ -67,6 +73,7 @@ bool  BlockJockChange[MAXPLAYERS + 1];
 bool  BlockPunchChange[MAXPLAYERS + 1];
 bool  BlockImpactChange[MAXPLAYERS + 1];
 bool  BlockSmokeChange[MAXPLAYERS + 1];
+bool  BlockJumpChange[MAXPLAYERS + 1];
 
 bool bAllowKarmaHardRain = false;
 
@@ -76,6 +83,7 @@ Handle SlapRegisterTimer[MAXPLAYERS]     = { INVALID_HANDLE, ... };
 Handle PunchRegisterTimer[MAXPLAYERS]    = { INVALID_HANDLE, ... };
 Handle ImpactRegisterTimer[MAXPLAYERS]   = { INVALID_HANDLE, ... };
 Handle SmokeRegisterTimer[MAXPLAYERS]    = { INVALID_HANDLE, ... };
+Handle JumpRegisterTimer[MAXPLAYERS]     = { INVALID_HANDLE, ... };
 
 Handle cooldownTimer = INVALID_HANDLE;
 
@@ -91,6 +99,19 @@ public Plugin myinfo =
 
 public void OnPluginStart()
 {
+	char sHostname[64];
+	GetConVarString(FindConVar("hostname"), sHostname, sizeof(sHostname));
+
+	if (StrContains(sHostname, "Test Server", false) != -1)
+	{
+		TEST_DEBUG = true;
+	}
+
+	if (IsServerDebugMode())
+	{
+		HookEvent("player_jump", event_PlayerJump, EventHookMode_Post);
+	}
+
 	HookEvent("charger_carry_start", event_ChargerGrab, EventHookMode_Post);
 	HookEvent("charger_carry_end", event_GrabEnded, EventHookMode_Post);
 	HookEvent("jockey_ride_end", event_jockeyRideEndPre, EventHookMode_Pre);
@@ -108,6 +129,7 @@ public void OnPluginStart()
 	CreateConVar("l4d2_karma_charge_version", PLUGIN_VERSION, " L4D2 Karma Charge Plugin Version ", FCVAR_DONTRECORD);
 	// triggeringHeight = 	AutoExecConfig_CreateConVar("l4d2_karma_charge_height",	"475.0", 		" What Height is considered karma ");
 	karmaPrefix             = AutoExecConfig_CreateConVar("l4d2_karma_charge_prefix", "", "Prefix for announcements. For colors, replace the side the slash points towards, example is /x04[/x05KarmaCharge/x03]");
+	karmaBirdCharge         = AutoExecConfig_CreateConVar("l4d2_karma_charge_bird", "1", "Whether or not to enable bird charges, which are unlethal height charges.");
 	karmaSlowTimeOnServer   = AutoExecConfig_CreateConVar("l4d2_karma_charge_slowtime_on_server", "5.0", " How long does Time get slowed for the server");
 	karmaSlowTimeOnCouple   = AutoExecConfig_CreateConVar("l4d2_karma_charge_slowtime_on_couple", "3.0", " How long does Time get slowed for the karma couple");
 	karmaSlow               = AutoExecConfig_CreateConVar("l4d2_karma_charge_slowspeed", "0.2", " How slow Time gets. Hardwired to minimum 0.1 or the server crashes", _, true, 0.1);
@@ -122,8 +144,8 @@ public void OnPluginStart()
 	// Cleaning should be done at the end
 	AutoExecConfig_CleanFile();
 
-	// public void KarmaKillSystem_OnKarmaEventPost(victim, attacker, const String:KarmaName[])
-	fw_OnKarmaEventPost = CreateGlobalForward("KarmaKillSystem_OnKarmaEventPost", ET_Ignore, Param_Cell, Param_Cell, Param_String);
+	// public void KarmaKillSystem_OnKarmaEventPost(int victim, int attacker, const char[] KarmaName, bool bBird)
+	fw_OnKarmaEventPost = CreateGlobalForward("KarmaKillSystem_OnKarmaEventPost", ET_Ignore, Param_Cell, Param_Cell, Param_String, Param_Cell);
 
 	HookConVarChange(cvarisEnabled, _cvarChange);
 	// HookConVarChange(triggeringHeight, 	_cvarChange);
@@ -230,6 +252,9 @@ public void OnClientDisconnect(int client)
 
 		if (LastSmoker[i] == client)
 			LastSmoker[i] = 0;
+
+		if (LastJumper[i] == client)
+			LastJumper[i] = 0;
 	}
 }
 
@@ -249,6 +274,7 @@ public void OnMapStart()
 		PunchRegisterTimer[i]    = INVALID_HANDLE;
 		ImpactRegisterTimer[i]   = INVALID_HANDLE;
 		SmokeRegisterTimer[i]    = INVALID_HANDLE;
+		JumpRegisterTimer[i]     = INVALID_HANDLE;
 
 		apexHeight[i] = -65535.0;
 	}
@@ -343,6 +369,7 @@ public Action Timer_CheckVictim(Handle timer, DataPack DP)
 
 	char sKarmaName[32];
 	int  lastKarma = GetAnyLastKarma(client, sKarmaName, sizeof(sKarmaName));
+
 	if (lastKarma == 0)
 	{
 		victimTimer[client] = INVALID_HANDLE;
@@ -355,24 +382,93 @@ public Action Timer_CheckVictim(Handle timer, DataPack DP)
 		return Plugin_Stop;
 	}
 
-	float fOrigin[3], fEndOrigin[3], fMins[3], fMaxs[3];
-	GetEntPropVector(client, Prop_Data, "m_vecOrigin", fOrigin);
+	float fOrigin[3], fEndOrigin[3], fEndPredictedOrigin[3], fMins[3], fMaxs[3];
+	GetEntPropVector(client, Prop_Data, "m_vecAbsOrigin", fOrigin);
+
+	if (fOrigin[2] > preJumpHeight[client])
+		return Plugin_Continue;
+
+	// Cannot hang to a ledge when this much lower than jump height
+	else if (preJumpHeight[client] > fOrigin[2] + 64.0)
+		secondsLeft = 0.0;
+
+	ArrayList aEntities = new ArrayList(1);
 
 	GetClientMins(client, fMins);
 	GetClientMaxs(client, fMaxs);
 
-	TR_TraceRayFilter(fOrigin, ANGLE_STRAIGHT_DOWN, MASK_SHOT, RayType_Infinite, TraceFilter_DontHitPlayers);
+	TR_TraceRayFilter(fOrigin, ANGLE_STRAIGHT_DOWN, MASK_PLAYERSOLID, RayType_Infinite, TraceFilter_DontHitPlayersAndClips);
 
 	TR_GetEndPosition(fEndOrigin);
 
 	// Now try again with hull to avoid funny stuff.
-	TR_TraceHullFilter(fOrigin, fEndOrigin, fMins, fMaxs, MASK_SHOT, TraceFilter_DontHitPlayers);
+
+	TR_TraceHullFilter(fOrigin, fEndOrigin, fMins, fMaxs, MASK_PLAYERSOLID, TraceFilter_DontHitPlayersAndClips);
 
 	TR_GetEndPosition(fEndOrigin);
 
+	float fPlaneNormal[3];
+	// For bird charges to find if it's a slope.
+	TR_GetPlaneNormal(INVALID_HANDLE, fPlaneNormal);
+
+	if (fPlaneNormal[2] < 0.7 && fPlaneNormal[2] != 0.0)
+	{
+		float fVelocity[3], fModifiedVelocity[3];
+		GetEntPropVector(client, Prop_Data, "m_vecVelocity", fVelocity);
+
+		float fVector[3];
+
+		fModifiedVelocity = fVelocity;
+
+		if (GetVectorLength(fModifiedVelocity) < 1000.0)
+		{
+			NormalizeVector(fModifiedVelocity, fModifiedVelocity);
+			ScaleVector(fModifiedVelocity, 1000.0);
+
+			if (fModifiedVelocity[2] < -64.0)
+				fModifiedVelocity[2] = -64.0;
+		}
+
+		fVector[0] = fOrigin[0] + fModifiedVelocity[0];
+		fVector[1] = fOrigin[1] + fModifiedVelocity[1];
+		fVector[2] = fOrigin[2];
+
+		TR_TraceRayFilter(fVector, ANGLE_STRAIGHT_DOWN, MASK_PLAYERSOLID, RayType_Infinite, TraceFilter_DontHitPlayersAndClips);
+
+		TR_GetEndPosition(fEndPredictedOrigin);
+
+		TR_TraceHullFilter(fVector, fEndPredictedOrigin, fMins, fMaxs, MASK_PLAYERSOLID, TraceFilter_DontHitPlayersAndClips);
+
+		TR_GetEndPosition(fEndPredictedOrigin);
+
+		int ent = TR_GetEntityIndex();
+
+		if (ent != -1)
+		{
+			char sClassname[64];
+			GetEdictClassname(ent, sClassname, sizeof(sClassname));
+
+			DebugPrintToAll("A%s", sClassname);
+		}
+
+		// Now make a trace between fOrigin and fEndPredictedOrigin.
+		TR_TraceHullFilter(fOrigin, fEndPredictedOrigin, fMins, fMaxs, MASK_PLAYERSOLID, TraceFilter_DontHitPlayersAndClips);
+
+		TR_GetEndPosition(fEndPredictedOrigin);
+
+		TR_EnumerateEntities(fOrigin, fEndPredictedOrigin, PARTITION_SOLID_EDICTS | PARTITION_TRIGGER_EDICTS | PARTITION_STATIC_PROPS, RayType_EndPoint, TraceEnum_TriggerHurt, aEntities);
+
+		if (IsServerDebugMode())
+		{
+			TE_SetupBeamPoints(fOrigin, fEndPredictedOrigin, PrecacheModel("materials/vgui/white_additive.vmt"), 0, 0, 0, 10.0, 10.0, 10.0, 0, 10.0, { 255, 0, 0, 255 }, 50);
+			TE_SendToAllInRange(fOrigin, RangeType_Audibility);
+		}
+	}
+
 	// You must EXCEED 340.0 height fall damage to instantly die at 100 health.
 
-	if (!CanClientSurviveFall(client, apexHeight[client] - fEndOrigin[2]))
+	// 62 is player height
+	if (!CanClientSurviveFall(client, apexHeight[client] - (fEndOrigin[2] + 62.0)))
 	{
 		if (secondsLeft <= 0.0)
 		{
@@ -392,8 +488,6 @@ public Action Timer_CheckVictim(Handle timer, DataPack DP)
 	// No height? Maybe we can find some useful trigger_hurt.
 	else
 	{
-		ArrayList aEntities = new ArrayList(1);
-
 		TR_EnumerateEntities(fOrigin, fEndOrigin, PARTITION_SOLID_EDICTS | PARTITION_TRIGGER_EDICTS | PARTITION_STATIC_PROPS, RayType_EndPoint, TraceEnum_TriggerHurt, aEntities);
 
 		int iSize = GetArraySize(aEntities);
@@ -427,6 +521,9 @@ public void L4D_TankClaw_OnPlayerHit_Post(int tank, int claw, int victim)
 		return;
 
 	else if (L4D_GetClientTeam(victim) != L4DTeam_Survivor || L4D_GetClientTeam(tank) != L4DTeam_Infected)
+		return;
+
+	else if (L4D_GetAttackerCarry(victim) != 0)
 		return;
 
 	LastPuncher[victim]        = tank;
@@ -543,6 +640,15 @@ public Action RegisterCaptorDelay(Handle timer, any victim)
 	BlockRegisterCaptor[victim] = false;
 
 	BlockRegisterTimer[victim] = INVALID_HANDLE;
+
+	return Plugin_Continue;
+}
+
+public Action RegisterJumpDelay(Handle timer, any victim)
+{
+	BlockJumpChange[victim] = false;
+
+	JumpRegisterTimer[victim] = INVALID_HANDLE;
 
 	return Plugin_Continue;
 }
@@ -717,10 +823,11 @@ public Action DisallowCheckHardRain(Handle event, const char[] name, bool dontBr
 
 public Action Command_XYZ(int client, int args)
 {
-	float Origin[3];
-	GetEntPropVector(client, Prop_Data, "m_vecOrigin", Origin);
+	float Origin[3], Velocity[3];
+	GetEntPropVector(client, Prop_Data, "m_vecAbsOrigin", Origin);
+	GetEntPropVector(client, Prop_Data, "m_vecVelocity", Velocity);
 
-	PrintToChat(client, "%.4f, %.4f, %.4f", Origin[0], Origin[1], Origin[2]);
+	PrintToChat(client, "Origin: %.4f, %.4f, %.4f | Velocity: %.2f, %.2f, %.2f | FV: %.2f", Origin[0], Origin[1], Origin[2], Velocity[0], Velocity[1], Velocity[2], GetEntPropFloat(client, Prop_Send, "m_flFallVelocity"));
 
 	return Plugin_Handled;
 }
@@ -731,26 +838,31 @@ public void OnGameFrame()
 	{
 		if (IsClientInGame(i) && IsPlayerAlive(i))
 		{
-			if (GetEntityFlags(i) & FL_ONGROUND)
-				apexHeight[i] = -65535.0;
+			float fOrigin[3];
 
+			GetEntPropVector(i, Prop_Data, "m_vecAbsOrigin", fOrigin);
+
+			if (GetEntityFlags(i) & FL_ONGROUND)
+			{
+				apexHeight[i]     = -65535.0;
+				preJumpHeight[i]  = fOrigin[2];
+				apexFallDamage[i] = 0.0;
+			}
 			else
 			{
-				float fOrigin[3];
-
-				GetEntPropVector(i, Prop_Data, "m_vecOrigin", fOrigin);
-
 				if (fOrigin[2] > apexHeight[i])
+				{
 					apexHeight[i] = fOrigin[2];
+				}
 			}
 
 			if (BlockAllChange[i])
 				continue;
 
-			else if (LastCharger[i] == 0 && LastJockey[i] == 0 && LastSlapper[i] == 0 && LastPuncher[i] == 0 && LastImpacter[i] == 0 && LastSmoker[i] == 0)
+			else if (!GetAnyLastKarma(i))
 				continue;
 
-			if (!IsClientInGame(i))
+			else if (!IsClientInGame(i))
 				continue;
 
 			else if (!IsPlayerAlive(i))
@@ -790,6 +902,9 @@ public void OnGameFrame()
 			else if (LastSmoker[i] != 0 && SmokeRegisterTimer[i] == INVALID_HANDLE && !BlockSmokeChange[i])
 				LastSmoker[i] = 0;
 
+			else if (LastJumper[i] != 0 && JumpRegisterTimer[i] == INVALID_HANDLE && !BlockJumpChange[i])
+				LastJumper[i] = 0;
+
 			// No blocks, remove victim timer.
 			if (victimTimer[i] != INVALID_HANDLE && !FindAnyRegisterBlocks(i))
 			{
@@ -798,6 +913,31 @@ public void OnGameFrame()
 			}
 		}
 	}
+}
+
+public Action event_PlayerJump(Handle event, const char[] name, bool dontBroadcast)
+{
+	int victim = GetClientOfUserId(GetEventInt(event, "userid"));
+
+	if (!isEnabled || !victim || L4D_GetClientTeam(victim) != L4DTeam_Survivor)
+		return Plugin_Continue;
+
+	LastJumper[victim]        = victim;
+	BlockJumpChange[victim]   = true;
+	JumpRegisterTimer[victim] = CreateTimer(0.25, RegisterJumpDelay, victim, TIMER_FLAG_NO_MAPCHANGE);
+	if (victimTimer[victim] != INVALID_HANDLE)
+	{
+		CloseHandle(victimTimer[victim]);
+		victimTimer[victim] = INVALID_HANDLE;
+	}
+
+	DataPack DP;
+	victimTimer[victim] = CreateDataTimer(CHARGE_CHECKING_INTERVAL, Timer_CheckVictim, DP, TIMER_FLAG_NO_MAPCHANGE | TIMER_REPEAT);
+
+	DP.WriteFloat(0.3);
+	DP.WriteCell(victim);
+
+	return Plugin_Continue;
 }
 
 public Action event_ChargerGrab(Handle event, const char[] name, bool dontBroadcast)
@@ -887,7 +1027,7 @@ public Action event_GrabEnded(Handle event, const char[] name, bool dontBroadcas
 				SetEntPropEnt(i, Prop_Send, "m_pummelVictim", -1);
 		}
 		float Origin[3];
-		GetEntPropVector(client, Prop_Data, "m_vecOrigin", Origin);
+		GetEntPropVector(client, Prop_Data, "m_vecAbsOrigin", Origin);
 		TeleportEntity(victim, Origin, NULL_VECTOR, NULL_VECTOR);
 
 		int iEntity = GetEntPropEnt(client, Prop_Send, "m_customAbility");
@@ -1041,22 +1181,71 @@ public Action Timer_CheckCharge(Handle timer, any client)
 
 	else if (GetEntityFlags(client) & FL_ONGROUND) return Plugin_Continue;
 
-	float fOrigin[3], fEndOrigin[3], fMins[3], fMaxs[3];
-	GetEntPropVector(client, Prop_Data, "m_vecOrigin", fOrigin);
+	float fOrigin[3], fEndOrigin[3], fEndPredictedOrigin[3], fMins[3], fMaxs[3];
+	GetEntPropVector(client, Prop_Data, "m_vecAbsOrigin", fOrigin);
 
 	ArrayList aEntities = new ArrayList(1);
 
 	GetClientMins(client, fMins);
 	GetClientMaxs(client, fMaxs);
 
-	TR_TraceRayFilter(fOrigin, ANGLE_STRAIGHT_DOWN, MASK_SHOT, RayType_Infinite, TraceFilter_DontHitPlayers);
+	TR_TraceRayFilter(fOrigin, ANGLE_STRAIGHT_DOWN, MASK_PLAYERSOLID, RayType_Infinite, TraceFilter_DontHitPlayersAndClips);
 
 	TR_GetEndPosition(fEndOrigin);
 
 	// Now try again with hull to avoid funny stuff.
-	TR_TraceHullFilter(fOrigin, fEndOrigin, fMins, fMaxs, MASK_SHOT, TraceFilter_DontHitPlayers);
+
+	TR_TraceHullFilter(fOrigin, fEndOrigin, fMins, fMaxs, MASK_PLAYERSOLID, TraceFilter_DontHitPlayersAndClips);
 
 	TR_GetEndPosition(fEndOrigin);
+
+	float fPlaneNormal[3];
+	// For bird charges to find if it's a slope.
+	TR_GetPlaneNormal(INVALID_HANDLE, fPlaneNormal);
+
+	// 0.0 is also flat apparently.
+	if (fPlaneNormal[2] < 0.7 && fPlaneNormal[2] != 0.0)
+	{
+		float fVelocity[3];
+		GetEntPropVector(client, Prop_Data, "m_vecVelocity", fVelocity);
+
+		float fVector[3];
+
+		fVector[0] = fOrigin[0] + fVelocity[0];
+		fVector[1] = fOrigin[1] + fVelocity[1];
+		fVector[2] = fOrigin[2];
+
+		TR_TraceRayFilter(fVector, ANGLE_STRAIGHT_DOWN, MASK_PLAYERSOLID, RayType_Infinite, TraceFilter_DontHitPlayersAndClips);
+
+		TR_GetEndPosition(fEndPredictedOrigin);
+
+		TR_TraceHullFilter(fVector, fEndPredictedOrigin, fMins, fMaxs, MASK_PLAYERSOLID, TraceFilter_DontHitPlayersAndClips);
+
+		TR_GetEndPosition(fEndPredictedOrigin);
+
+		int ent = TR_GetEntityIndex();
+
+		if (ent != -1)
+		{
+			char sClassname[64];
+			GetEdictClassname(ent, sClassname, sizeof(sClassname));
+
+			DebugPrintToAll("A%s", sClassname);
+		}
+
+		// Now make a trace between fOrigin and fEndPredictedOrigin.
+		TR_TraceHullFilter(fOrigin, fEndPredictedOrigin, fMins, fMaxs, MASK_PLAYERSOLID, TraceFilter_DontHitPlayersAndClips);
+
+		TR_GetEndPosition(fEndPredictedOrigin);
+
+		TR_EnumerateEntities(fOrigin, fEndPredictedOrigin, PARTITION_SOLID_EDICTS | PARTITION_TRIGGER_EDICTS | PARTITION_STATIC_PROPS, RayType_EndPoint, TraceEnum_TriggerHurt, aEntities);
+
+		if (IsServerDebugMode())
+		{
+			TE_SetupBeamPoints(fOrigin, fEndPredictedOrigin, PrecacheModel("materials/vgui/white_additive.vmt"), 0, 0, 0, 10.0, 10.0, 10.0, 0, 10.0, { 255, 0, 0, 255 }, 50);
+			TE_SendToAllInRange(fOrigin, RangeType_Audibility);
+		}
+	}
 
 	TR_EnumerateEntities(fOrigin, fEndOrigin, PARTITION_SOLID_EDICTS | PARTITION_TRIGGER_EDICTS | PARTITION_STATIC_PROPS, RayType_EndPoint, TraceEnum_TriggerHurt, aEntities);
 
@@ -1065,17 +1254,37 @@ public Action Timer_CheckCharge(Handle timer, any client)
 
 	if (iSize > 0)
 	{
-		AnnounceKarma(client, -1, "Charge");
+		AnnounceKarma(client, victim, "Charge");
 		chargerTimer[client] = INVALID_HANDLE;
 		return Plugin_Stop;
+	}
+
+	else if (GetConVarBool(karmaBirdCharge))
+	{
+		// 0.0 is also flat apparently.
+		if ((fPlaneNormal[2] >= 0.7 || fPlaneNormal[2] == 0.0) && !CanClientSurviveFall(victim, apexHeight[client] - fEndOrigin[2]))
+		{
+			AnnounceKarma(client, victim, "Charge", true);
+			chargerTimer[client] = INVALID_HANDLE;
+			return Plugin_Stop;
+		}
 	}
 
 	return Plugin_Continue;
 }
 
-public bool TraceFilter_DontHitPlayers(int entity, int contentsMask)
+public bool TraceFilter_DontHitPlayersAndClips(int entity, int contentsMask)
 {
-	return !IsEntityPlayer(entity);
+	if (IsEntityPlayer(entity))
+		return false;
+
+	char sClassname[64];
+	GetEdictClassname(entity, sClassname, sizeof(sClassname));
+
+	if (StrContains(sClassname, "_clip", false) != -1)
+		return false;
+
+	return true;
 }
 
 public bool TraceEnum_TriggerHurt(int entity, ArrayList aEntities)
@@ -1115,7 +1324,7 @@ public bool TraceEnum_TriggerHurt(int entity, ArrayList aEntities)
 
 	return true;
 }
-void AnnounceKarma(int client, int victim = -1, char[] KarmaName)
+void AnnounceKarma(int client, int victim = -1, char[] KarmaName, bool bBird = false)
 {
 	if (victim == -1 && GetEntProp(client, Prop_Send, "m_zombieClass") == 6)
 	{
@@ -1154,13 +1363,14 @@ void AnnounceKarma(int client, int victim = -1, char[] KarmaName)
 	char sPrefix[64];
 	GetKarmaPrefix(sPrefix, sizeof(sPrefix));
 
-	PrintToChatAll("%s\x03%N\x01 Karma %s'd\x04 %N\x01, for great justice!!", sPrefix, client, KarmaName, victim);
+	PrintToChatAll("%s\x03%N\x01 %s %s'd\x04 %N\x01, for great justice!!", sPrefix, client, bBird ? "Bird" : "Karma", KarmaName, victim);
 
 	Call_StartForward(fw_OnKarmaEventPost);
 
 	Call_PushCell(victim);
 	Call_PushCell(client);
 	Call_PushString(KarmaName);
+	Call_PushCell(bBird);
 
 	Call_Finish();
 
@@ -1188,8 +1398,8 @@ public Action RestoreSlowmo(Handle Timer)
 stock void SlowKarmaCouple(int victim, int attacker, char[] sKarmaName)
 {
 	float fAttackerOrigin[3], fVictimOrigin[3];
-	GetEntPropVector(attacker, Prop_Data, "m_vecOrigin", fAttackerOrigin);
-	GetEntPropVector(victim, Prop_Data, "m_vecOrigin", fVictimOrigin);
+	GetEntPropVector(attacker, Prop_Data, "m_vecAbsOrigin", fAttackerOrigin);
+	GetEntPropVector(victim, Prop_Data, "m_vecAbsOrigin", fVictimOrigin);
 
 	// Karma can register a lot of time after the register because of ledge hang, so no random slowdowns...
 	if (StrEqual(sKarmaName, "Charge"))
@@ -1281,24 +1491,16 @@ stock void SlowTime(const char[] re_Acceleration = "2.0", const char[] minBlendR
 
 stock void DebugPrintToAll(const char[] format, any...)
 {
-#if (TEST_DEBUG || TEST_DEBUG_LOG)
-	char buffer[256];
+	if (IsServerDebugMode())
+	{
+		char buffer[256];
 
-	VFormat(buffer, sizeof(buffer), format, 2);
+		VFormat(buffer, sizeof(buffer), format, 2);
 
-	#if TEST_DEBUG
-	PrintToChatAll("[KARMA] %s", buffer);
-	PrintToConsole(0, "[KARMA] %s", buffer);
-	#endif
-
-	LogMessage("%s", buffer);
-#else
-	// suppress "format" never used warning
-	if (format[0])
-		return;
-	else
-		return;
-#endif
+		LogMessage("%s", buffer);
+		PrintToChatAll("[KARMA] %s", buffer);
+		PrintToConsole(0, "[KARMA] %s", buffer);
+	}
 }
 
 stock bool isEntityInsideFakeZone(int entity, float xOriginWall, float xOriginParallelWall, float yOriginWall2, float yOriginParallelWall2, float zOriginCeiling, float zOriginFloor)
@@ -1307,7 +1509,7 @@ stock bool isEntityInsideFakeZone(int entity, float xOriginWall, float xOriginPa
 		ThrowError("Entity %i is not valid!", entity);
 
 	float Origin[3];
-	GetEntPropVector(entity, Prop_Data, "m_vecOrigin", Origin);
+	GetEntPropVector(entity, Prop_Data, "m_vecAbsOrigin", Origin);
 
 	if ((Origin[0] >= xOriginWall && Origin[0] <= xOriginParallelWall) || (Origin[0] <= xOriginWall && Origin[0] >= xOriginParallelWall))
 	{
@@ -1423,7 +1625,7 @@ stock void PrintToChatRadius(int target, const char[] format, any...)
 	VFormat(buffer, sizeof(buffer), format, 3);
 
 	float fTargetOrigin[3];
-	GetEntPropVector(target, Prop_Data, "m_vecOrigin", fTargetOrigin);
+	GetEntPropVector(target, Prop_Data, "m_vecAbsOrigin", fTargetOrigin);
 
 	for (int i = 1; i <= MaxClients; i++)
 	{
@@ -1434,7 +1636,7 @@ stock void PrintToChatRadius(int target, const char[] format, any...)
 			continue;
 
 		float fOrigin[3];
-		GetEntPropVector(i, Prop_Data, "m_vecOrigin", fOrigin);
+		GetEntPropVector(i, Prop_Data, "m_vecAbsOrigin", fOrigin);
 
 		if (GetVectorDistance(fTargetOrigin, fOrigin, false) < 512.0)
 			PrintToChat(i, buffer);
@@ -1518,6 +1720,13 @@ stock int GetAnyLastKarma(int victim, char[] sKarmaName = "", int iLen = 0)
 		return LastSmoker[victim];
 	}
 
+	else if (LastJumper[victim] != 0)
+	{
+		FormatEx(sKarmaName, iLen, "Jump");
+
+		return LastJumper[victim];
+	}
+
 	return 0;
 }
 
@@ -1543,12 +1752,6 @@ stock void GetKarmaPrefix(char[] sPrefix, int iPrefixLen)
 
 stock bool CanClientSurviveFall(int client, float fTotalDistance)
 {
-	if (IsClientAffectedByFling(client))
-		fTotalDistance -= 30.0;    // No clue why it acts like that...
-
-	else
-		fTotalDistance -= 15.0;    // No clue why it acts like that...
-
 	if (fTotalDistance <= 340.0)
 		return true;
 
@@ -1587,12 +1790,10 @@ stock bool CanClientSurviveFall(int client, float fTotalDistance)
 	for (int i = sizeof(fDistancesVsDamages) - 1; i >= 0; i--)
 	{
 		if (fTotalDistance > fDistancesVsDamages[i][0])
-		{
-			return GetEntProp(client, Prop_Send, "m_iHealth") > fDistancesVsDamages[i][1];
-		}
+			return GetEntProp(client, Prop_Send, "m_iHealth") > RoundToFloor(fDistancesVsDamages[i][1]);
 	}
 
-	return false;
+	return true;
 }
 
 stock bool IsDoubleCharged(int victim)
@@ -1616,3 +1817,89 @@ stock bool IsDoubleCharged(int victim)
 
 	return count >= 2;
 }
+
+/**
+ * SM Lib
+ * Rotates a vector around its zero-point.
+ * Note: As example you can rotate mins and maxs of an entity and then add its origin to mins and maxs to get its bounding box in relation to the world and its rotation.
+ * When used with players use the following angle input:
+ *   angles[0] = 0.0;
+ *   angles[1] = 0.0;
+ *   angles[2] = playerEyeAngles[1];
+ *
+ * @param vec 			Vector to rotate.
+ * @param angles 		How to rotate the vector.
+ * @param result		Output vector.
+ */
+stock void Math_RotateVector(const float vec[3], const float angles[3], float result[3])
+{
+	// First the angle/radiant calculations
+	float rad[3];
+	// I don't really know why, but the alpha, beta, gamma order of the angles are messed up...
+	// 2 = xAxis
+	// 0 = yAxis
+	// 1 = zAxis
+	rad[0] = DegToRad(angles[2]);
+	rad[1] = DegToRad(angles[0]);
+	rad[2] = DegToRad(angles[1]);
+
+	// Pre-calc function calls
+	float cosAlpha = Cosine(rad[0]);
+	float sinAlpha = Sine(rad[0]);
+	float cosBeta  = Cosine(rad[1]);
+	float sinBeta  = Sine(rad[1]);
+	float cosGamma = Cosine(rad[2]);
+	float sinGamma = Sine(rad[2]);
+
+	// 3D rotation matrix for more information: http://en.wikipedia.org/wiki/Rotation_matrix#In_three_dimensions
+	float x = vec[0], y = vec[1], z = vec[2];
+	float newX, newY, newZ;
+	newY = cosAlpha * y - sinAlpha * z;
+	newZ = cosAlpha * z + sinAlpha * y;
+	y    = newY;
+	z    = newZ;
+
+	newX = cosBeta * x + sinBeta * z;
+	newZ = cosBeta * z - sinBeta * x;
+	x    = newX;
+	z    = newZ;
+
+	newX = cosGamma * x - sinGamma * y;
+	newY = cosGamma * y + sinGamma * x;
+	x    = newX;
+	y    = newY;
+
+	// Store everything...
+	result[0] = x;
+	result[1] = y;
+	result[2] = z;
+}
+
+stock bool IsServerDebugMode()
+{
+	return TEST_DEBUG;
+}
+/*
+stock float CalculateFallDamage(int client, bool& bFatal = false)
+{
+    bFatal = false;
+
+    const float SAFE_FALLING_SPEED  = 560.0;
+    const float FATAL_FALLING_SPEED = 720.0;
+
+    float fFallSpeed = GetEntPropFloat(client, Prop_Send, "m_flFallVelocity");
+
+    if (fFallSpeed == 0.0)
+        return 0.0;
+
+    float fFallDamage = 100.0 * Pow((fFallSpeed / (FATAL_FALLING_SPEED - SAFE_FALLING_SPEED)), 2.0);
+
+    if (fFallSpeed >= FATAL_FALLING_SPEED)
+    {
+        bFatal = fFallDamage > float(GetEntProp(client, Prop_Send, "m_iHealth"));
+        return fFallDamage;
+    }
+
+    return fFallDamage;
+}
+*/
