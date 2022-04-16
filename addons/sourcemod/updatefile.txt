@@ -2,10 +2,10 @@
 {
 	"Version"
 	{
-		"Latest"	"1.6"
+		"Latest"	"1.7"
 	}
 	
-	"Notes"	"Fourth Major Overhaul - Karma kills are registered mid-air. Bird charge is back, known as the old karma charge."
+	"Notes"	"Fifth Major Overhaul - Cvar to make karma kills announce only on kill confirmed. This changes forwards. Some karma jockeys register."
 }
 	
 "Files"
