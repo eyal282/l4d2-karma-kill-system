@@ -4,26 +4,23 @@
 #include <sdktools>
 #include <sourcemod>
 
-#pragma newdecls required
-#pragma semicolon 1
-
 #undef REQUIRE_PLUGIN
 #undef REQUIRE_EXTENSIONS
 #tryinclude < updater>    // Comment out this line to remove updater support by force.
 #define REQUIRE_PLUGIN
 #define REQUIRE_EXTENSIONS
 
+#pragma newdecls required
+#pragma semicolon 1
+
 #define UPDATE_URL "https://raw.githubusercontent.com/eyal282/l4d2-karma-kill-system/master/addons/sourcemod/updatefile.txt"
 
-#define PLUGIN_VERSION "1.8"
+#define PLUGIN_VERSION "1.9"
 
 // TEST_DEBUG is always 1 if the server's name contains "Test Server"
 bool TEST_DEBUG = false;
 
-#define NO_MERCY_DEBUG_ORIGIN               \
-	{                                       \
-		7547.976563, 3661.247803, 78.031250 \
-	}
+static const float NO_MERCY_DEBUG_ORIGIN[] = { 7547.976563, 3661.247803, 78.031250 };
 
 // All of these must be 0.1 * n, basically 0.1, 0.2, 0.3, 0.4...
 // All of these are seconds after you reach the height you jumped from.
@@ -174,7 +171,7 @@ void OnCheckKarmaZoneTouch(int victim, int entity, const char[] zone_name, int p
 
 			GetEntPropVector(pinner, Prop_Data, "m_vecAbsOrigin", fPinnerOrigin);
 
-			TeleportEntity(victim, fPinnerOrigin);
+			TeleportEntity(victim, fPinnerOrigin, NULL_VECTOR, NULL_VECTOR);
 		}
 
 		// Makes body undefibable.
@@ -330,7 +327,7 @@ public Action Command_UltimateKarma(int client, int args)
 
 		fDebugOrigin[2] += fLogHeight[client];
 
-		TeleportEntity(client, fDebugOrigin);
+		TeleportEntity(client, fDebugOrigin, NULL_VECTOR, NULL_VECTOR);
 	}
 	else
 	{
@@ -978,7 +975,7 @@ public void OnGameFrame()
 
 						fDebugOrigin[2] += fLogHeight[i];
 
-						TeleportEntity(i, fDebugOrigin);
+						TeleportEntity(i, fDebugOrigin, NULL_VECTOR, NULL_VECTOR);
 					}
 				}
 			}
