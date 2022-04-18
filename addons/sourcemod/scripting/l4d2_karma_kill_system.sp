@@ -15,7 +15,7 @@
 
 #define UPDATE_URL "https://raw.githubusercontent.com/eyal282/l4d2-karma-kill-system/master/addons/sourcemod/updatefile.txt"
 
-#define PLUGIN_VERSION "1.9"
+#define PLUGIN_VERSION "2.0"
 
 // TEST_DEBUG is always 1 if the server's name contains "Test Server"
 bool TEST_DEBUG = false;
@@ -56,6 +56,8 @@ Handle cvarModeSwitch        = INVALID_HANDLE;
 Handle cvarCooldown          = INVALID_HANDLE;
 bool   isEnabled             = true;
 // float lethalHeight					= 475.0;
+
+bool g_bMapStarted = false;
 
 Handle fw_OnKarmaEventPost = INVALID_HANDLE;
 
@@ -218,6 +220,7 @@ public void OnPluginStart()
 	HookEvent("charger_impact", event_ChargerImpact, EventHookMode_Post);
 	HookEvent("player_ledge_grab", Event_PlayerLedgeGrab, EventHookMode_Post);
 	HookEvent("player_death", event_playerDeathPre, EventHookMode_Pre);
+	HookEvent("round_start", event_RoundStart, EventHookMode_Post);
 
 	AutoExecConfig_SetFile("l4d2_karma_kill_system");
 
@@ -453,8 +456,15 @@ public void OnClientDisconnect(int client)
 	}
 }
 
+public void OnMapEnd()
+{
+	g_bMapStarted = false;
+}
+
 public void OnMapStart()
 {
+	g_bMapStarted = true;
+
 	PrefetchSound(SOUND_EFFECT);
 	PrecacheSound(SOUND_EFFECT);
 
@@ -881,6 +891,14 @@ public Action event_playerDeathPre(Handle event, const char[] name, bool dontBro
 
 		return Plugin_Continue;
 	}
+	return Plugin_Continue;
+}
+
+public Action event_RoundStart(Handle event, const char[] name, bool dontBroadcast)
+{
+	if (g_bMapStarted)
+		SlowTime("0.0", "0.0", "0.0", 0.0);
+
 	return Plugin_Continue;
 }
 
@@ -1599,6 +1617,7 @@ void AnnounceKarma(int client, int victim = -1, char[] KarmaName, bool bBird = f
 	}
 }
 
+// This does nothing except avoid double freezing of time.
 public Action RestoreSlowmo(Handle Timer)
 {
 	cooldownTimer = INVALID_HANDLE;
@@ -1663,7 +1682,7 @@ stock int GetCarryVictim(int client)
 	return victim;
 }
 
-stock void SlowTime(const char[] re_Acceleration = "2.0", const char[] minBlendRate = "1.0", const char[] blendDeltaMultiplier = "2.0")
+stock void SlowTime(const char[] re_Acceleration = "2.0", const char[] minBlendRate = "1.0", const char[] blendDeltaMultiplier = "2.0", float fTime = -1.0)
 {
 	char  desiredTimeScale[16];
 	float fSlowPower = GetConVarFloat(karmaSlow);
@@ -1679,25 +1698,30 @@ stock void SlowTime(const char[] re_Acceleration = "2.0", const char[] minBlendR
 	DispatchKeyValue(ent, "acceleration", re_Acceleration);
 	DispatchKeyValue(ent, "minBlendRate", minBlendRate);
 	DispatchKeyValue(ent, "blendDeltaMultiplier", blendDeltaMultiplier);
+	DispatchKeyValue(ent, "targetname", "THE WORLD");
 
 	DispatchSpawn(ent);
+
 	AcceptEntityInput(ent, "Start");
 
 	char sAddOutput[64];
 
+	if (fTime == -1.0)
+		GetConVarFloat(karmaSlowTimeOnServer);
+
 	// Must compensate for the timescale making every single timer slower, both CreateTimer type timers and OnUser1 type timers
-	FormatEx(sAddOutput, sizeof(sAddOutput), "OnUser1 !self:Stop::%.2f:1", GetConVarFloat(karmaSlowTimeOnServer) * fSlowPower);
+	FormatEx(sAddOutput, sizeof(sAddOutput), "OnUser1 !self:Stop::%.2f:1", fTime * fSlowPower);
 	SetVariantString(sAddOutput);
 	AcceptEntityInput(ent, "AddOutput");
 	AcceptEntityInput(ent, "FireUser1");
 
-	FormatEx(sAddOutput, sizeof(sAddOutput), "OnUser2 !self:Kill::%.2f:1", (GetConVarFloat(karmaSlowTimeOnServer) * fSlowPower) + 5.0);
+	FormatEx(sAddOutput, sizeof(sAddOutput), "OnUser2 !self:Kill::%.2f:1", (fTime * fSlowPower) + 5.0);
 	SetVariantString(sAddOutput);
 	AcceptEntityInput(ent, "AddOutput");
 	AcceptEntityInput(ent, "FireUser2");
 
 	// Start counting the cvarCooldown from after the freeze ends, also this timer needs to account for the timescale.
-	cooldownTimer = CreateTimer((GetConVarFloat(karmaSlowTimeOnServer) * fSlowPower) + GetConVarFloat(cvarCooldown), RestoreSlowmo, _, TIMER_FLAG_NO_MAPCHANGE);
+	cooldownTimer = CreateTimer((fTime * fSlowPower) + GetConVarFloat(cvarCooldown), RestoreSlowmo, _, TIMER_FLAG_NO_MAPCHANGE);
 }
 
 stock void DebugPrintToAll(const char[] format, any...)
@@ -1727,28 +1751,6 @@ stock void DebugLogToFile(const char[] fileName, const char[] format, any...)
 
 		LogToFile(sPath, buffer);
 	}
-}
-
-stock bool isEntityInsideFakeZone(int entity, float xOriginWall, float xOriginParallelWall, float yOriginWall2, float yOriginParallelWall2, float zOriginCeiling, float zOriginFloor)
-{
-	if (!IsValidEntity(entity))
-		ThrowError("Entity %i is not valid!", entity);
-
-	float Origin[3];
-	GetEntPropVector(entity, Prop_Data, "m_vecAbsOrigin", Origin);
-
-	if ((Origin[0] >= xOriginWall && Origin[0] <= xOriginParallelWall) || (Origin[0] <= xOriginWall && Origin[0] >= xOriginParallelWall))
-	{
-		if ((Origin[1] >= yOriginWall2 && Origin[1] <= yOriginParallelWall2) || (Origin[1] <= yOriginWall2 && Origin[1] >= yOriginParallelWall2))
-		{
-			if ((Origin[2] >= zOriginFloor && Origin[2] <= zOriginCeiling) || (Origin[2] <= zOriginFloor && Origin[2] >= zOriginCeiling))
-			{
-				return true;
-			}
-		}
-	}
-
-	return false;
 }
 
 bool IsClientAffectedByFling(int client)
@@ -2413,4 +2415,27 @@ stock void RemoveServerTag2(const char[] tag)
 			SetConVarFlags(hTags, flags);
 		}
 	}
+}
+
+stock int FindEntityByTargetname(int startEnt, const char[] TargetName, bool caseSensitive, bool bContains)    // Same as FindEntityByClassname with sensitivity and contain features
+{
+	int entCount = GetEntityCount();
+
+	char EntTargetName[300];
+
+	for (int i = startEnt + 1; i < entCount; i++)
+	{
+		if (!IsValidEntity(i))
+			continue;
+
+		else if (!IsValidEdict(i))
+			continue;
+
+		GetEntPropString(i, Prop_Data, "m_iName", EntTargetName, sizeof(EntTargetName));
+
+		if ((StrEqual(EntTargetName, TargetName, caseSensitive) && !bContains) || (StrContains(EntTargetName, TargetName, caseSensitive) != -1 && bContains))
+			return i;
+	}
+
+	return -1;
 }
