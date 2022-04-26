@@ -2,10 +2,10 @@
 {
 	"Version"
 	{
-		"Latest"	"2.1"
+		"Latest"	"2.2"
 	}
 	
-	"Notes"	"Major overhaul to detection when takeover occurs. Disabled by default Karma jumps are added ( suicide )"
+	"Notes"	"Hotfix in the major overhaul of 2.1"
 }
 	
 "Files"
