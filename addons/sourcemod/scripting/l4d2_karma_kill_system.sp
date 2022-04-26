@@ -15,7 +15,7 @@
 
 #define UPDATE_URL "https://raw.githubusercontent.com/eyal282/l4d2-karma-kill-system/master/addons/sourcemod/updatefile.txt"
 
-#define PLUGIN_VERSION "2.1"
+#define PLUGIN_VERSION "2.2"
 
 // TEST_DEBUG is always 1 if the server's name contains "Test Server"
 bool TEST_DEBUG = false;
@@ -522,6 +522,7 @@ public void Plugins_OnJockeyJumpPost(int victim, int jockey, float fForce)
 
 	victimTimer[victim].dp.WriteFloat(JOCKEY_JUMP_SECONDS_NEEDED_AGAINST_LEDGE_HANG_PER_FORCE * (fForce / 500.0));
 	victimTimer[victim].dp.WriteCell(GetClientUserId(victim));
+	victimTimer[victim].dp.WriteCell(INVALID_HANDLE);
 }
 
 public void L4D2_OnPlayerFling_Post(int victim, int attacker, float vecDir[3])
@@ -557,6 +558,7 @@ public void L4D2_OnPlayerFling_Post(int victim, int attacker, float vecDir[3])
 
 		victimTimer[victim].dp.WriteFloat(FLING_SECONDS_NEEDED_AGAINST_LEDGE_HANG);
 		victimTimer[victim].dp.WriteCell(GetClientUserId(victim));
+		victimTimer[victim].dp.WriteCell(INVALID_HANDLE);
 	}
 }
 
@@ -566,6 +568,8 @@ public Action Timer_CheckVictim(Handle timer, DataPack DP)
 
 	float secondsLeft = DP.ReadFloat();
 	int   client      = GetClientOfUserId(DP.ReadCell());
+
+	Handle hIgnoreTimer = DP.ReadCell();
 
 	if (client == 0)
 		return Plugin_Stop;
@@ -688,7 +692,7 @@ public Action Timer_CheckVictim(Handle timer, DataPack DP)
 	{
 		if (secondsLeft <= 0.0)
 		{
-			AnnounceKarma(lastKarma, client, type, false, false, victimTimer[client].timer);
+			AnnounceKarma(lastKarma, client, type, false, false, victimTimer[client].timer, hIgnoreTimer);
 			victimTimer[client].timer = INVALID_HANDLE;
 			victimTimer[client].dp    = null;
 			return Plugin_Stop;
@@ -714,7 +718,7 @@ public Action Timer_CheckVictim(Handle timer, DataPack DP)
 		{
 			if (secondsLeft <= 0.0)
 			{
-				AnnounceKarma(lastKarma, client, type, false, false, victimTimer[client].timer);
+				AnnounceKarma(lastKarma, client, type, false, false, victimTimer[client].timer, hIgnoreTimer);
 				victimTimer[client].timer = INVALID_HANDLE;
 				victimTimer[client].dp    = null;
 				return Plugin_Stop;
@@ -765,6 +769,7 @@ public void L4D_TankClaw_OnPlayerHit_Post(int tank, int claw, int victim)
 
 	victimTimer[victim].dp.WriteFloat(PUNCH_SECONDS_NEEDED_AGAINST_LEDGE_HANG);
 	victimTimer[victim].dp.WriteCell(GetClientUserId(victim));
+	victimTimer[victim].dp.WriteCell(INVALID_HANDLE);
 }
 
 public Action RegisterAllKarmaDelay(Handle timer, any victim)
@@ -1250,6 +1255,7 @@ public void OnPlayersSwapped(int oldPlayer, int newPlayer)
 
 		victimTimer[newPlayer].dp.WriteFloat(secondsLeft);
 		victimTimer[newPlayer].dp.WriteCell(GetClientUserId(newPlayer));
+		victimTimer[newPlayer].dp.WriteCell(INVALID_HANDLE);
 	}
 	if (ledgeTimer[oldPlayer] != INVALID_HANDLE)
 	{
@@ -1383,19 +1389,6 @@ public Action event_PlayerJump(Handle event, const char[] name, bool dontBroadca
 
 	JumpRegisterTimer[victim] = CreateTimer(0.25, RegisterJumpDelay, victim);
 
-	/*
-	if (victimTimer[victim].timer != INVALID_HANDLE)
-	{
-	    CloseHandle(victimTimer[victim].timer);
-	    victimTimer[victim].timer = INVALID_HANDLE;
-	    victimTimer[victim].dp    = null;
-	}
-
-	victimTimer[victim].timer = CreateDataTimer(CHARGE_CHECKING_INTERVAL, Timer_CheckVictim, victimTimer[victim].dp, TIMER_REPEAT);
-
-	victimTimer[victim].dp.WriteFloat(0.3);
-	victimTimer[victim].dp.WriteCell(GetClientUserId(victim));
-	*/
 	return Plugin_Continue;
 }
 
@@ -1460,6 +1453,7 @@ public Action event_ChargerImpact(Handle event, const char[] name, bool dontBroa
 
 		victimTimer[victim].dp.WriteFloat(IMPACT_SECONDS_NEEDED_AGAINST_LEDGE_HANG);
 		victimTimer[victim].dp.WriteCell(GetClientUserId(victim));
+		victimTimer[victim].dp.WriteCell(INVALID_HANDLE);
 	}
 
 	return Plugin_Continue;
@@ -1564,6 +1558,7 @@ public Action Timer_CheckJockeyRideLedge(Handle timer, any client)
 
 	victimTimer[client].dp.WriteFloat(0.0);
 	victimTimer[client].dp.WriteCell(GetClientUserId(client));
+	victimTimer[client].dp.WriteCell(ledgeTimer[client]);
 
 	// AnnounceKarma deletes this timer to avoid infinite karma spam.
 	TriggerTimer(victimTimer[client].timer);
@@ -1606,6 +1601,7 @@ public Action event_tongueGrabOrRelease(Handle event, const char[] name, bool do
 
 	victimTimer[victim].dp.WriteFloat(SMOKE_SECONDS_NEEDED_AGAINST_LEDGE_HANG);
 	victimTimer[victim].dp.WriteCell(GetClientUserId(victim));
+	victimTimer[victim].dp.WriteCell(INVALID_HANDLE);
 
 	return Plugin_Continue;
 }
@@ -1736,6 +1732,9 @@ public bool TraceFilter_DontHitPlayersAndClips(int entity, int contentsMask)
 	if (StrContains(sClassname, "_clip", false) != -1)
 		return false;
 
+	else if (strncmp(sClassname, "weapon_", 7) == 0)
+		return false;
+
 	return true;
 }
 
@@ -1800,7 +1799,7 @@ public bool TraceEnum_TriggerHurt(int entity, ArrayList aEntities)
 
 // Client will be negative if the karma is done by a bot and the bot left the server.
 // In that case, client = -1 * zombieclass
-void AnnounceKarma(int client, int victim, int type, bool bBird, bool bKillConfirmed, Handle hDontKillHandle = INVALID_HANDLE)
+void AnnounceKarma(int client, int victim, int type, bool bBird, bool bKillConfirmed, Handle hDontKillHandle = INVALID_HANDLE, Handle hDontKillHandle2 = INVALID_HANDLE)
 {
 	char KarmaName[64];
 	FormatEx(KarmaName, sizeof(KarmaName), karmaNames[type]);
@@ -1812,13 +1811,13 @@ void AnnounceKarma(int client, int victim, int type, bool bBird, bool bKillConfi
 		victimTimer[victim].dp    = null;
 	}
 
-	if (ledgeTimer[victim] != INVALID_HANDLE && hDontKillHandle != ledgeTimer[victim])
+	if (ledgeTimer[victim] != INVALID_HANDLE && hDontKillHandle != ledgeTimer[victim] && hDontKillHandle2 != ledgeTimer[victim])
 	{
 		CloseHandle(ledgeTimer[victim]);
 		ledgeTimer[victim] = INVALID_HANDLE;
 	}
 
-	if (client > 0 && chargerTimer[client] != INVALID_HANDLE && hDontKillHandle != chargerTimer[client])
+	if (client > 0 && chargerTimer[client] != INVALID_HANDLE && hDontKillHandle != chargerTimer[client] && hDontKillHandle2 != chargerTimer[client])
 	{
 		CloseHandle(chargerTimer[client]);
 		chargerTimer[client] = INVALID_HANDLE;
