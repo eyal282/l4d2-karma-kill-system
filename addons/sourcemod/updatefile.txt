@@ -2,10 +2,10 @@
 {
 	"Version"
 	{
-		"Latest"	"2.2"
+		"Latest"	"2.3"
 	}
 	
-	"Notes"	"Hotfix in the major overhaul of 2.1"
+	"Notes"	"Karmas now register player_death on the responsible. Karma Stagger added to reduce chance of false positive karma jumps. Karma hunt and karma jockey stagger both added for same reason."
 }
 	
 "Files"
