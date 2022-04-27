@@ -15,7 +15,7 @@
 
 #define UPDATE_URL "https://raw.githubusercontent.com/eyal282/l4d2-karma-kill-system/master/addons/sourcemod/updatefile.txt"
 
-#define PLUGIN_VERSION "2.2"
+#define PLUGIN_VERSION "2.3"
 
 // TEST_DEBUG is always 1 if the server's name contains "Test Server"
 bool TEST_DEBUG = false;
@@ -43,6 +43,7 @@ Handle cvarNoFallDamageProtectFromIncap = INVALID_HANDLE;
 
 Handle karmaPrefix           = INVALID_HANDLE;
 Handle karmaJump             = INVALID_HANDLE;
+Handle karmaAwardConfirmed   = INVALID_HANDLE;
 Handle karmaOnlyConfirmed    = INVALID_HANDLE;
 Handle karmaBirdCharge       = INVALID_HANDLE;
 Handle karmaSlowTimeOnServer = INVALID_HANDLE;
@@ -56,16 +57,6 @@ bool g_bMapStarted = false;
 
 Handle fw_OnKarmaEventPost = INVALID_HANDLE;
 
-char karmaNames[][] = {
-	"Charge",
-	"Impact",
-	"Jockey",
-	"Slap",
-	"Punch",
-	"Smoke",
-	"Jump",
-};
-
 enum
 {
 	KT_Charge = 0,
@@ -74,8 +65,20 @@ enum
 	KT_Slap,
 	KT_Punch,
 	KT_Smoke,
+	KT_Stagger,
 	KT_Jump,
 	KarmaType_MAX
+};
+
+char karmaNames[KarmaType_MAX][] = {
+	"Charge",
+	"Impact",
+	"Jockey",
+	"Slap",
+	"Punch",
+	"Smoke",
+	"Stagger",
+	"Jump",
 };
 
 // I'll probably eventually add a logger for karma jumps and add "lastDistance" to this enum struct that dictates the closest special infected if maybe something messed up.
@@ -254,6 +257,7 @@ public void OnPluginStart()
 	// triggeringHeight = 	AutoExecConfig_CreateConVar("l4d2_karma_charge_height",	"475.0", 		" What Height is considered karma ");
 	karmaPrefix                      = AutoExecConfig_CreateConVar("l4d2_karma_charge_prefix", "", "Prefix for announcements. For colors, replace the side the slash points towards, example is /x04[/x05KarmaCharge/x03]");
 	karmaJump                        = AutoExecConfig_CreateConVar("l4d2_karma_jump", "0", "Enable karma jumping. Karma jumping only registers on confirmed kills.");
+	karmaAwardConfirmed              = AutoExecConfig_CreateConVar("l4d2_karma_award_confirmed", "1", "Award a confirmed karma maker with a player_death event.");
 	karmaOnlyConfirmed               = AutoExecConfig_CreateConVar("l4d2_karma_only_confirmed", "0", "Whenever or not to make karma announce only happen upon death.");
 	karmaBirdCharge                  = AutoExecConfig_CreateConVar("l4d2_karma_charge_bird", "1", "Whether or not to enable bird charges, which are unlethal height charges.");
 	karmaSlowTimeOnServer            = AutoExecConfig_CreateConVar("l4d2_karma_charge_slowtime_on_server", "5.0", " How long does Time get slowed for the server");
@@ -523,6 +527,32 @@ public void Plugins_OnJockeyJumpPost(int victim, int jockey, float fForce)
 	victimTimer[victim].dp.WriteFloat(JOCKEY_JUMP_SECONDS_NEEDED_AGAINST_LEDGE_HANG_PER_FORCE * (fForce / 500.0));
 	victimTimer[victim].dp.WriteCell(GetClientUserId(victim));
 	victimTimer[victim].dp.WriteCell(INVALID_HANDLE);
+}
+
+public void L4D2_OnPounceOrLeapStumble_Post(int victim, int attacker)
+{
+	if (victim < 1 || victim > MaxClients || attacker < 1 || attacker > MaxClients)
+		return;
+
+	else if (L4D_GetClientTeam(victim) != L4DTeam_Survivor || L4D_GetClientTeam(attacker) != L4DTeam_Infected)
+		return;
+
+	DettachKarmaFromVictim(victim, KT_Jump);
+
+	// No need to set up a remove timer, because as long as the player is under stagger, the player is saving the status.
+}
+
+public void L4D2_OnStagger_Post(int victim, int attacker)
+{
+	if (victim < 1 || victim > MaxClients || attacker < 1 || attacker > MaxClients)
+		return;
+
+	else if (L4D_GetClientTeam(victim) != L4DTeam_Survivor || L4D_GetClientTeam(attacker) != L4DTeam_Infected)
+		return;
+
+	AttachKarmaToVictim(victim, attacker, KT_Stagger);
+
+	return;
 }
 
 public void L4D2_OnPlayerFling_Post(int victim, int attacker, float vecDir[3])
@@ -873,60 +903,34 @@ public Action event_playerDeathPre(Handle event, const char[] name, bool dontBro
 	if (AllKarmaRegisterTimer[victim] == INVALID_HANDLE)
 		return Plugin_Continue;
 
-	else if (LastKarma[victim][KT_Charge].artist != 0)
+	for (int i = 0; i < KarmaType_MAX; i++)
 	{
-		if (LastKarma[victim][KT_Charge].artist > 0 && IsPlayerAlive(LastKarma[victim][KT_Charge].artist))
+		if (LastKarma[victim][i].artist != 0)
 		{
-			SetEntPropEnt(LastKarma[victim][KT_Charge].artist, Prop_Send, "m_carryVictim", -1);
-			SetEntPropEnt(LastKarma[victim][KT_Charge].artist, Prop_Send, "m_pummelVictim", -1);
+			if (i == KT_Charge && LastKarma[victim][i].artist > 0 && IsPlayerAlive(LastKarma[victim][i].artist))
+			{
+				SetEntPropEnt(LastKarma[victim][i].artist, Prop_Send, "m_carryVictim", -1);
+				SetEntPropEnt(LastKarma[victim][i].artist, Prop_Send, "m_pummelVictim", -1);
 
-			CreateTimer(0.1, Timer_ResetAbility, GetClientUserId(LastKarma[victim][KT_Charge].artist), TIMER_FLAG_NO_MAPCHANGE);
+				CreateTimer(0.1, Timer_ResetAbility, GetClientUserId(LastKarma[victim][i].artist), TIMER_FLAG_NO_MAPCHANGE);
+			}
+
+			int memoryLastKarma = LastKarma[victim][i].artist;
+
+			AnnounceKarma(LastKarma[victim][i].artist, victim, i, false, true);
+
+			if (memoryLastKarma > 0 && GetConVarBool(karmaAwardConfirmed))
+			{
+				SetEventInt(event, "attacker", GetClientUserId(memoryLastKarma));
+				SetEventInt(event, "attackerentid", memoryLastKarma);
+				SetEventInt(event, "headshot", 2);
+				return Plugin_Changed;
+			}
+
+			return Plugin_Continue;
 		}
-
-		AnnounceKarma(LastKarma[victim][KT_Charge].artist, victim, KT_Charge, false, true);
-
-		return Plugin_Continue;
-	}
-	else if (LastKarma[victim][KT_Jockey].artist != 0)
-	{
-		AnnounceKarma(LastKarma[victim][KT_Jockey].artist, victim, KT_Jockey, false, true);
-
-		return Plugin_Continue;
 	}
 
-	else if (LastKarma[victim][KT_Slap].artist != 0)
-	{
-		AnnounceKarma(LastKarma[victim][KT_Slap].artist, victim, KT_Slap, false, true);
-
-		return Plugin_Continue;
-	}
-
-	else if (LastKarma[victim][KT_Punch].artist != 0)
-	{
-		AnnounceKarma(LastKarma[victim][KT_Punch].artist, victim, KT_Punch, false, true);
-
-		return Plugin_Continue;
-	}
-
-	else if (LastKarma[victim][KT_Impact].artist != 0)
-	{
-		AnnounceKarma(LastKarma[victim][KT_Impact].artist, victim, KT_Impact, false, true);
-
-		return Plugin_Continue;
-	}
-
-	else if (LastKarma[victim][KT_Smoke].artist != 0)
-	{
-		AnnounceKarma(LastKarma[victim][KT_Smoke].artist, victim, KT_Smoke, false, true);
-
-		return Plugin_Continue;
-	}
-	else if (LastKarma[victim][KT_Jump].artist != 0)
-	{
-		AnnounceKarma(LastKarma[victim][KT_Jump].artist, victim, KT_Jump, false, true);
-
-		return Plugin_Continue;
-	}
 	return Plugin_Continue;
 }
 
@@ -1084,6 +1088,10 @@ public void OnGameFrame()
 
 			else if (LastKarma[i][KT_Smoke].artist != 0 && SmokeRegisterTimer[i] == INVALID_HANDLE)
 				DettachKarmaFromVictim(i, KT_Smoke);
+
+			// Staggers despite keeping the player on the ground will have L4D_IsPlayerStaggering that appears above.
+			else if (LastKarma[i][KT_Stagger].artist != 0)
+				DettachKarmaFromVictim(i, KT_Stagger);
 
 			// If you hold jump, you can make yourself fall from ledges, so don't detach if you're holding jump button.
 			else if (LastKarma[i][KT_Jump].artist != 0 && JumpRegisterTimer[i] == INVALID_HANDLE && !(GetClientButtons(i) & IN_JUMP))
@@ -2212,51 +2220,14 @@ stock bool IsEntityPlayer(int entity)
 
 stock int GetAnyLastKarma(int victim, int& type = 0)
 {
-	if (LastKarma[victim][KT_Charge].artist != 0)
+	for (int i = 0; i < KarmaType_MAX; i++)
 	{
-		type = KT_Charge;
+		if (LastKarma[victim][i].artist != 0)
+		{
+			type = i;
 
-		return LastKarma[victim][KT_Charge].artist;
-	}
-	else if (LastKarma[victim][KT_Punch].artist != 0)
-	{
-		type = KT_Punch;
-
-		return LastKarma[victim][KT_Punch].artist;
-	}
-	else if (LastKarma[victim][KT_Jockey].artist != 0)
-	{
-		type = KT_Jockey;
-
-		return LastKarma[victim][KT_Jockey].artist;
-	}
-
-	else if (LastKarma[victim][KT_Slap].artist != 0)
-	{
-		type = KT_Slap;
-
-		return LastKarma[victim][KT_Slap].artist;
-	}
-
-	else if (LastKarma[victim][KT_Impact].artist != 0)
-	{
-		type = KT_Impact;
-
-		return LastKarma[victim][KT_Impact].artist;
-	}
-
-	else if (LastKarma[victim][KT_Smoke].artist != 0)
-	{
-		type = KT_Smoke;
-
-		return LastKarma[victim][KT_Smoke].artist;
-	}
-
-	else if (LastKarma[victim][KT_Jump].artist != 0)
-	{
-		type = KT_Jump;
-
-		return LastKarma[victim][KT_Jump].artist;
+			return LastKarma[victim][i].artist;
+		}
 	}
 
 	return 0;
