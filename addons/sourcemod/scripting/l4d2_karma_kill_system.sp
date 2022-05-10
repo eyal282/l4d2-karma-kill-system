@@ -15,7 +15,7 @@
 
 #define UPDATE_URL "https://raw.githubusercontent.com/eyal282/l4d2-karma-kill-system/master/addons/sourcemod/updatefile.txt"
 
-#define PLUGIN_VERSION "2.3"
+#define PLUGIN_VERSION "2.4"
 
 // TEST_DEBUG is always 1 if the server's name contains "Test Server"
 bool TEST_DEBUG = false;
@@ -25,6 +25,8 @@ static const float NO_MERCY_DEBUG_ORIGIN[] = { 7547.976563, 3661.247803, 78.0312
 
 // All of these must be 0.1 * n, basically 0.1, 0.2, 0.3, 0.4...
 // All of these are seconds after you reach the height you jumped from.
+
+bool g_bMapStarted = false;
 
 float JOCKEY_JUMP_SECONDS_NEEDED_AGAINST_LEDGE_HANG_PER_FORCE = 0.3;
 float IMPACT_SECONDS_NEEDED_AGAINST_LEDGE_HANG                = 0.3;
@@ -51,11 +53,12 @@ Handle karmaSlowTimeOnCouple = INVALID_HANDLE;
 Handle karmaSlow             = INVALID_HANDLE;
 Handle cvarModeSwitch        = INVALID_HANDLE;
 Handle cvarCooldown          = INVALID_HANDLE;
-bool   isEnabled             = true;
 
-bool g_bMapStarted = false;
+Handle cvarFatalFallDamage = INVALID_HANDLE;
+bool   isEnabled           = true;
 
 Handle fw_OnKarmaEventPost = INVALID_HANDLE;
+Handle fw_OnKarmaJumpPost  = INVALID_HANDLE;
 
 enum
 {
@@ -250,6 +253,7 @@ public void OnPluginStart()
 	HookEvent("player_ledge_grab", Event_PlayerLedgeGrab, EventHookMode_Post);
 	HookEvent("player_death", event_playerDeathPre, EventHookMode_Pre);
 	HookEvent("round_start", event_RoundStart, EventHookMode_Post);
+	HookEvent("round_end", event_RoundEnd, EventHookMode_Post);
 
 	AutoExecConfig_SetFile("l4d2_karma_kill_system");
 
@@ -269,6 +273,8 @@ public void OnPluginStart()
 	cvarModeSwitch                   = AutoExecConfig_CreateConVar("l4d2_karma_charge_slowmode", "0", " 0 - Entire Server gets slowed, 1 - Only Charger and Survivor do", _, true, 0.0, true, 1.0);
 	cvarCooldown                     = AutoExecConfig_CreateConVar("l4d2_karma_charge_cooldown", "0.0", "If slowmode is 0, how long does it take for the next karma to freeze the entire map. Begins counting from the end of the previous freeze");
 
+	cvarFatalFallDamage = FindConVar("survivor_incap_max_fall_damage");
+
 	// This makes an internal call to AutoExecConfig with the given configfile
 	AutoExecConfig_ExecuteFile();
 
@@ -276,6 +282,7 @@ public void OnPluginStart()
 	AutoExecConfig_CleanFile();
 
 	fw_OnKarmaEventPost = CreateGlobalForward("KarmaKillSystem_OnKarmaEventPost", ET_Ignore, Param_Cell, Param_Cell, Param_String, Param_Cell, Param_Cell, Param_Cell);
+	fw_OnKarmaJumpPost  = CreateGlobalForward("KarmaKillSystem_OnKarmaJumpPost", ET_Ignore, Param_String, Param_String, Param_String, Param_Cell, Param_Cell, Param_Cell);
 
 	HookConVarChange(cvarisEnabled, _cvarChange);
 	// HookConVarChange(triggeringHeight, 	_cvarChange);
@@ -319,6 +326,29 @@ public void OnPluginStart()
  */
 forward void KarmaKillSystem_OnKarmaEventPost(int victim, int attacker, const char[] KarmaName, bool bBird, bool bKillConfirmed, bool bOnlyConfirmed);
 
+/**
+ * Description
+ *
+ * @param jumperSteamId      Artist name.
+ * @param jumperName     	 Artist steam ID.
+ * @param KarmaName          Name of karma: "Charge", "Impact", "Jockey", "Slap", "Punch", "Smoke"
+ * @param bBird              true if a bird charge event occured, false if a karma kill was detected or performed.
+ * @param bKillConfirmed     Whether or not this indicates the complete death of the player. This is NOT just !IsPlayerAlive(victim)
+ * @param bOnlyConfirmed     Whether or not only kill confirmed are allowed.
+
+ * @noreturn
+ * @note					This can be called more than once. One for the announcement, one for the kill confirmed.
+                            If you want to reward both killconfirmed and killunconfirmed you should reward when killconfirmed is false.
+                            If you want to reward if killconfirmed you should reward when killconfirmed is true.
+
+ * @note					If the plugin makes a kill confirmed without a previous announcement without kill confirmed,
+                            it compensates by sending two consecutive events, one without kill confirmed, one with kill confirmed.
+
+
+
+ */
+forward void KarmaKillSystem_OnKarmaJumpPost(char[] jumperSteamId, char[] jumperName, const char[] KarmaName, bool bBird, bool bKillConfirmed, bool bOnlyConfirmed);
+
 public void OnAllPluginsLoaded()
 {
 	if (!CommandExists("sm_xyz"))
@@ -355,7 +385,7 @@ public Action Command_UltimateKarma(int client, int args)
 	{
 		fLogHeight[client] = 160.0;
 
-		PrintToChat(client, "Height debugger enabled.");
+		PrintToChat(client, "Height debug enabled.");
 
 		float fDebugOrigin[3];
 
@@ -369,7 +399,7 @@ public Action Command_UltimateKarma(int client, int args)
 	{
 		fLogHeight[client] = -1.0;
 
-		PrintToChat(client, "Height debugger disabled.");
+		PrintToChat(client, "Height debug disabled.");
 
 		ForcePlayerSuicide(client);
 	}
@@ -421,7 +451,7 @@ public Action SDKEvent_OnTakeDamage(int victim, int& attacker, int& inflictor, f
 			return Plugin_Changed;
 		}
 
-		else if (GetConVarBool(cvarNoFallDamageProtectFromIncap) && damage >= 224.0 && L4D_IsPlayerIncapacitated(victim))
+		else if (GetConVarBool(cvarNoFallDamageProtectFromIncap) && damage >= GetConVarFloat(cvarFatalFallDamage) && L4D_IsPlayerIncapacitated(victim))
 		{
 			// Spike it!
 			damage *= 64.0;
@@ -466,6 +496,7 @@ public void OnClientDisconnect(int client)
 	if (IsFakeClient(client))
 	{
 		StripKarmaArtistFromVictim(client, KarmaType_MAX);
+		StripKarmaVictimsFromArtist(client, KarmaType_MAX);
 	}
 }
 
@@ -936,8 +967,17 @@ public Action event_playerDeathPre(Handle event, const char[] name, bool dontBro
 
 public Action event_RoundStart(Handle event, const char[] name, bool dontBroadcast)
 {
+	// SlowTime creates an entity, and round_start can be called before a map starts ( and before entities can be created )
 	if (g_bMapStarted)
-		SlowTime("0.0", "0.0", "0.0", 0.0);
+		SlowTime("0.0", "0.0", "0.0", 0.0, 1.0);
+
+	return Plugin_Continue;
+}
+
+public Action event_RoundEnd(Handle event, const char[] name, bool dontBroadcast)
+{
+	// Because round_start has bugs when calling on first chapters.
+	SlowTime("0.0", "0.0", "0.0", 0.0, 1.0);
 
 	return Plugin_Continue;
 }
@@ -1812,7 +1852,7 @@ void AnnounceKarma(int client, int victim, int type, bool bBird, bool bKillConfi
 	char KarmaName[64];
 	FormatEx(KarmaName, sizeof(KarmaName), karmaNames[type]);
 
-	if (victimTimer[victim].timer != INVALID_HANDLE && hDontKillHandle != victimTimer[victim].timer)
+	if (victimTimer[victim].timer != INVALID_HANDLE && hDontKillHandle != victimTimer[victim].timer && hDontKillHandle2 != victimTimer[victim].timer)
 	{
 		CloseHandle(victimTimer[victim].timer);
 		victimTimer[victim].timer = INVALID_HANDLE;
@@ -1894,6 +1934,19 @@ void AnnounceKarma(int client, int victim, int type, bool bBird, bool bKillConfi
 		Call_PushString(KarmaName);
 		Call_PushCell(bBird);
 		Call_PushCell(bKillConfirmed);
+		Call_PushCell(GetConVarBool(karmaOnlyConfirmed));
+
+		Call_Finish();
+	}
+	else
+	{
+		Call_StartForward(fw_OnKarmaJumpPost);
+
+		Call_PushString(LastKarma[victim][type].artistSteamId);
+		Call_PushString(LastKarma[victim][type].artistName);
+		Call_PushString(KarmaName);
+		Call_PushCell(false);
+		Call_PushCell(true);
 		Call_PushCell(GetConVarBool(karmaOnlyConfirmed));
 
 		Call_Finish();
@@ -1995,13 +2048,16 @@ stock int GetCarryVictim(int client)
 	return victim;
 }
 
-stock void SlowTime(const char[] re_Acceleration = "2.0", const char[] minBlendRate = "1.0", const char[] blendDeltaMultiplier = "2.0", float fTime = -1.0)
+stock void SlowTime(const char[] re_Acceleration = "2.0", const char[] minBlendRate = "1.0", const char[] blendDeltaMultiplier = "2.0", float fTime = -1.0, float fSlowPower = -65535.0)
 {
-	char  desiredTimeScale[16];
-	float fSlowPower = GetConVarFloat(karmaSlow);
+	char desiredTimeScale[16];
+	if (fSlowPower == -65535.0)
+	{
+		fSlowPower = GetConVarFloat(karmaSlow);
 
-	if (fSlowPower < 0.03)
-		fSlowPower = 0.03;
+		if (fSlowPower < 0.03)
+			fSlowPower = 0.03;
+	}
 
 	FloatToString(fSlowPower, desiredTimeScale, sizeof(desiredTimeScale));
 
@@ -2015,26 +2071,35 @@ stock void SlowTime(const char[] re_Acceleration = "2.0", const char[] minBlendR
 
 	DispatchSpawn(ent);
 
-	AcceptEntityInput(ent, "Start");
+	if (fSlowPower == 1.0)
+	{
+		AcceptEntityInput(ent, "Reset");
 
-	char sAddOutput[64];
+		AcceptEntityInput(ent, "Kill");
+	}
+	else
+	{
+		AcceptEntityInput(ent, "Start");
 
-	if (fTime == -1.0)
-		fTime = GetConVarFloat(karmaSlowTimeOnServer);
+		char sAddOutput[64];
 
-	// Must compensate for the timescale making every single timer slower, both CreateTimer type timers and OnUser1 type timers
-	FormatEx(sAddOutput, sizeof(sAddOutput), "OnUser1 !self:Stop::%.2f:1", fTime * fSlowPower);
-	SetVariantString(sAddOutput);
-	AcceptEntityInput(ent, "AddOutput");
-	AcceptEntityInput(ent, "FireUser1");
+		if (fTime == -1.0)
+			fTime = GetConVarFloat(karmaSlowTimeOnServer);
 
-	FormatEx(sAddOutput, sizeof(sAddOutput), "OnUser2 !self:Kill::%.2f:1", (fTime * fSlowPower) + 5.0);
-	SetVariantString(sAddOutput);
-	AcceptEntityInput(ent, "AddOutput");
-	AcceptEntityInput(ent, "FireUser2");
+		// Must compensate for the timescale making every single timer slower, both CreateTimer type timers and OnUser1 type timers
+		FormatEx(sAddOutput, sizeof(sAddOutput), "OnUser1 !self:Stop::%.2f:1", fTime * fSlowPower);
+		SetVariantString(sAddOutput);
+		AcceptEntityInput(ent, "AddOutput");
+		AcceptEntityInput(ent, "FireUser1");
 
-	// Start counting the cvarCooldown from after the freeze ends, also this timer needs to account for the timescale.
-	cooldownTimer = CreateTimer((fTime * fSlowPower) + GetConVarFloat(cvarCooldown), RestoreSlowmo);
+		FormatEx(sAddOutput, sizeof(sAddOutput), "OnUser2 !self:Kill::%.2f:1", (fTime * fSlowPower) + 5.0);
+		SetVariantString(sAddOutput);
+		AcceptEntityInput(ent, "AddOutput");
+		AcceptEntityInput(ent, "FireUser2");
+
+		// Start counting the cvarCooldown from after the freeze ends, also this timer needs to account for the timescale.
+		cooldownTimer = CreateTimer((fTime * fSlowPower) + GetConVarFloat(cvarCooldown), RestoreSlowmo);
+	}
 }
 
 stock void DebugPrintToAll(const char[] format, any...)
@@ -2255,21 +2320,20 @@ stock void GetKarmaPrefix(char[] sPrefix, int iPrefixLen)
 
 stock bool CanClientSurviveFall(int client, float fTotalDistance)
 {
-	if (fTotalDistance <= 340.0)
-		return true;
+	float fFatalFallDaamage = GetConVarFloat(cvarFatalFallDamage);
 
 	// 137.5 is the lowest height of fall damage, making you take 0.000000 damage.
 	float fDistancesVsDamages[][] = {
-  /*
-  {157.5,   2.777781    },
-  { 177.5,  11.111101   },
-  { 197.5,  24.999961   },
-  { 220.0,  44.444358   },
-  { 242.5,  69.44429    },
-  { 265.0,  99.999771   },
-  { 290.0,  136.110794  },
-  { 315.0,  177.777343  },*/
-		{340.0,   224.99942   },
+
+		{157.5,   2.777781    },
+		{ 177.5,  11.111101   },
+		{ 197.5,  24.999961   },
+		{ 220.0,  44.444358   },
+		{ 242.5,  69.44429    },
+		{ 265.0,  99.999771   },
+		{ 290.0,  136.110794  },
+		{ 315.0,  177.777343  },
+		{ 340.0,  224.99942   },
 		{ 367.5,  277.777038  },
 		{ 397.5,  336.110198  },
 		{ 425.0,  399.998962  },
@@ -2378,7 +2442,7 @@ stock bool CanClientSurviveFall(int client, float fTotalDistance)
 	{
 		if (fTotalDistance >= fDistancesVsDamages[i][0])
 		{
-			return GetEntProp(client, Prop_Send, "m_iHealth") + L4D_GetTempHealth(client) > RoundToFloor(fDistancesVsDamages[i][1]);
+			return GetEntProp(client, Prop_Send, "m_iHealth") + L4D_GetTempHealth(client) > RoundToFloor(fDistancesVsDamages[i][1]) && fDistancesVsDamages[i][1] > fFatalFallDaamage;
 		}
 	}
 
@@ -2803,6 +2867,39 @@ stock void StripKarmaArtistFromVictim(int victim, int type)
 	}
 }
 
+stock void StripKarmaVictimsFromArtist(int artist, int type)
+{
+	if (type == KarmaType_MAX)
+	{
+		for (int i = 0; i < KarmaType_MAX; i++)
+		{
+			for (int client = 1; client <= MaxClients; client++)
+			{
+				if (!IsClientInGame(client))
+					continue;
+
+				else if (LastKarma[client][i].artist == artist)
+				{
+					StripKarmaArtistFromVictim(client, i);
+				}
+			}
+		}
+	}
+	else
+	{
+		for (int client = 1; client <= MaxClients; client++)
+		{
+			if (!IsClientInGame(client))
+				continue;
+
+			else if (LastKarma[client][type].artist == artist)
+			{
+				StripKarmaArtistFromVictim(client, type);
+			}
+		}
+	}
+}
+
 stock void DettachKarmaFromVictim(int victim, int type)
 {
 	if (type == KarmaType_MAX)
@@ -2828,7 +2925,8 @@ stock void TransferKarmaToVictim(int toVictim, int fromVictim)
 	{
 		if (LastKarma[fromVictim][i].artist != 0)
 		{
-			LastKarma[toVictim][i].artist        = LastKarma[fromVictim][i].artist;
+			// .artist is swapped because someone needs to be credited in rewards..
+			LastKarma[toVictim][i].artist        = toVictim;
 			LastKarma[toVictim][i].artistName    = LastKarma[fromVictim][i].artistName;
 			LastKarma[toVictim][i].artistSteamId = LastKarma[fromVictim][i].artistSteamId;
 		}
