@@ -2,10 +2,10 @@
 {
 	"Version"
 	{
-		"Latest"	"2.3"
+		"Latest"	"2.4"
 	}
 	
-	"Notes"	"Karmas now register player_death on the responsible. Karma Stagger added to reduce chance of false positive karma jumps. Karma hunt and karma jockey stagger both added for same reason."
+	"Notes"	"Bug fix for freezing server in slow motion"
 }
 	
 "Files"
