@@ -19,7 +19,7 @@ jobs:
         tar -xzf sourcemod.tar.gz
     - name: Give spcomp the required permissions
       run: chmod +x addons/sourcemod/scripting/spcomp
-    - name: Compiling of all TTT related plugins
+    - name: Compiling of all related plugins
       run: |
         for file in addons/sourcemod/scripting/*.sp
         do
