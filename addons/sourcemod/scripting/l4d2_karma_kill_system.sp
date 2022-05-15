@@ -97,6 +97,9 @@ enLastKarma LastKarma[MAXPLAYERS + 1][KarmaType_MAX];
 
 float preJumpHeight[MAXPLAYERS + 1];
 float apexHeight[MAXPLAYERS + 1];
+// Height at which we caught a survivor as charger
+// This is reduced by 1 for each frame the charger flying upwards ( jump )
+float catchHeight[MAXPLAYERS + 1];
 
 Handle chargerTimer[MAXPLAYERS] = { INVALID_HANDLE, ... };
 
@@ -527,8 +530,9 @@ public void OnMapStart()
 		delete SmokeRegisterTimer[i];
 		delete JumpRegisterTimer[i];
 
-		apexHeight[i] = -65535.0;
-		fLogHeight[i] = -1.0;
+		apexHeight[i]  = -65535.0;
+		catchHeight[i] = -65535.0;
+		fLogHeight[i]  = -1.0;
 	}
 
 	cooldownTimer = INVALID_HANDLE;
@@ -1051,17 +1055,21 @@ public void OnGameFrame()
 		if (IsClientInGame(i) && IsPlayerAlive(i))
 		{
 			float fOrigin[3];
+			float fVelocity[3];
 
 			GetEntPropVector(i, Prop_Data, "m_vecAbsOrigin", fOrigin);
+			GetEntPropVector(i, Prop_Data, "m_vecVelocity", fVelocity);
 
 			if (GetEntityFlags(i) & FL_ONGROUND)
 			{
-				float fVelocity[3];
-
-				GetEntPropVector(i, Prop_Data, "m_vecVelocity", fVelocity);
+				// Being on the ground reduces bird charge for slopes.
+				catchHeight[i] -= 3.0;
 
 				apexHeight[i]    = -65535.0;
 				preJumpHeight[i] = fOrigin[2];
+
+				if (GetCarryVictim(i) == -1)
+					catchHeight[i] = -65535.0;
 
 				if (fLogHeight[i] != -1.0)
 				{
@@ -1079,6 +1087,11 @@ public void OnGameFrame()
 			}
 			else
 			{
+				// Charger jumps also reduce bird charge for slopes.
+				if (fVelocity[2] >= 5.0)
+				{
+					catchHeight[i] -= 3.0;
+				}
 				if (fOrigin[2] > apexHeight[i])
 				{
 					apexHeight[i] = fOrigin[2];
@@ -1187,6 +1200,7 @@ public Action event_PlayerSpawn(Handle event, const char[] name, bool dontBroadc
 
 	preJumpHeight[client] = 0.0;
 	apexHeight[client]    = -65535.0;
+	catchHeight[client]   = -65535.0;
 
 	if (chargerTimer[client] != INVALID_HANDLE)
 	{
@@ -1263,11 +1277,13 @@ public void OnPlayersSwapped(int oldPlayer, int newPlayer)
 
 	preJumpHeight[newPlayer] = preJumpHeight[oldPlayer];
 	apexHeight[newPlayer]    = apexHeight[oldPlayer];
+	catchHeight[newPlayer]   = catchHeight[oldPlayer];
 
 	BlockAnnounce[oldPlayer] = false;
 
 	preJumpHeight[oldPlayer] = 0.0;
 	apexHeight[oldPlayer]    = 0.0;
+	catchHeight[oldPlayer]   = 0.0;
 
 	if (chargerTimer[oldPlayer] != INVALID_HANDLE)
 	{
@@ -1461,6 +1477,10 @@ public Action event_ChargerGrab(Handle event, const char[] name, bool dontBroadc
 		CloseHandle(chargerTimer[client]);
 		chargerTimer[client] = INVALID_HANDLE;
 	}
+
+	float fOrigin[3];
+	GetEntPropVector(client, Prop_Data, "m_vecAbsOrigin", fOrigin);
+	catchHeight[client] = fOrigin[2];
 
 	chargerTimer[client] = CreateTimer(CHARGE_CHECKING_INTERVAL, Timer_CheckCharge, client, TIMER_REPEAT);
 	TriggerTimer(chargerTimer[client], true);
@@ -1758,7 +1778,7 @@ public Action Timer_CheckCharge(Handle timer, any client)
 	else if (GetConVarBool(karmaBirdCharge))
 	{
 		// 0.0 is also flat apparently.
-		if ((fPlaneNormal[2] >= 0.7 || fPlaneNormal[2] == 0.0) && !CanClientSurviveFall(victim, apexHeight[client] - fEndOrigin[2]))
+		if ((fPlaneNormal[2] >= 0.7 || fPlaneNormal[2] == 0.0) && !CanClientSurviveFall(victim, catchHeight[client] - fEndOrigin[2]))
 		{
 			AnnounceKarma(client, victim, KT_Charge, true, false, chargerTimer[client]);
 			chargerTimer[client] = INVALID_HANDLE;
@@ -1952,20 +1972,22 @@ void AnnounceKarma(int client, int victim, int type, bool bBird, bool bKillConfi
 		Call_Finish();
 	}
 
+	// Major changes might make this unnecessary anymore.
+	/*
 	// Prevent jockey and charger bug where both are attached, and both make a karma...
 	if (client > 0 && GetEntPropEnt(client, Prop_Send, "m_carryVictim") == victim)
 	{
-		int Jockey = GetEntPropEnt(victim, Prop_Send, "m_jockeyAttacker");
+	    int Jockey = GetEntPropEnt(victim, Prop_Send, "m_jockeyAttacker");
 
-		if (Jockey != -1)
-		{
-			SetEntPropEnt(Jockey, Prop_Send, "m_jockeyVictim", -1);
-			SetEntPropEnt(victim, Prop_Send, "m_jockeyAttacker", -1);
+	    if (Jockey != -1)
+	    {
+	        SetEntPropEnt(Jockey, Prop_Send, "m_jockeyVictim", -1);
+	        SetEntPropEnt(victim, Prop_Send, "m_jockeyAttacker", -1);
 
-			DettachKarmaFromVictim(victim, KT_Jockey);
-		}
+	        DettachKarmaFromVictim(victim, KT_Jockey);
+	    }
 	}
-
+	*/
 	if (!bKillConfirmed)
 	{
 		// Ensuring the bKillConfirmed karma event will fire by removing unrelated karma artists.
@@ -2442,7 +2464,10 @@ stock bool CanClientSurviveFall(int client, float fTotalDistance)
 	{
 		if (fTotalDistance >= fDistancesVsDamages[i][0])
 		{
-			return GetEntProp(client, Prop_Send, "m_iHealth") + L4D_GetTempHealth(client) > RoundToFloor(fDistancesVsDamages[i][1]) && fDistancesVsDamages[i][1] > fFatalFallDaamage;
+			// Can survive the fall if either:
+			// 1. Player has more total health to survive the damage it deals.
+			// 2. The damage dealt is lower than the fatal fall damage.
+			return GetEntProp(client, Prop_Send, "m_iHealth") + L4D_GetTempHealth(client) > RoundToFloor(fDistancesVsDamages[i][1]) || fDistancesVsDamages[i][1] < fFatalFallDaamage;
 		}
 	}
 
@@ -2471,6 +2496,7 @@ stock bool IsDoubleCharged(int victim)
 	return count >= 2;
 }
 
+// Todo: check if clearing with netprops causes the jockey teleport to shadow realm bug.
 // WARNING!!! This will permanently freeze the victim, but I'm killing him so IDGAF.
 stock void ClearAllPinners(int victim)
 {
