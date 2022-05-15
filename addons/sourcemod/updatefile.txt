@@ -2,10 +2,10 @@
 {
 	"Version"
 	{
-		"Latest"	"2.4"
+		"Latest"	"2.5"
 	}
 	
-	"Notes"	"Bug fix for freezing server in slow motion"
+	"Notes"	"Got rid of possible jockey teleport to null, got rid of very common bug of false karma."
 }
 	
 "Files"
