@@ -2,10 +2,10 @@
 {
 	"Version"
 	{
-		"Latest"	"2.6"
+		"Latest"	"2.7"
 	}
 	
-	"Notes"	"Karma jump is now enabled mandatorily."
+	"Notes"	"Karma jump is now enabled mandatorily. Bots no longer trigger karma jump forwards"
 }
 	
 "Files"
