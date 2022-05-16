@@ -15,7 +15,7 @@
 
 #define UPDATE_URL "https://raw.githubusercontent.com/eyal282/l4d2-karma-kill-system/master/addons/sourcemod/updatefile.txt"
 
-#define PLUGIN_VERSION "2.6"
+#define PLUGIN_VERSION "2.7"
 
 // TEST_DEBUG is always 1 if the server's name contains "Test Server"
 bool TEST_DEBUG = false;
@@ -1966,18 +1966,21 @@ void AnnounceKarma(int client, int victim, int type, bool bBird, bool bKillConfi
 	}
 	else
 	{
-		Call_StartForward(fw_OnKarmaJumpPost);
+		if (!StrEqual(LastKarma[victim][type].artistSteamId, "BOT"))
+		{
+			Call_StartForward(fw_OnKarmaJumpPost);
 
-		Call_PushCell(victim);
-		Call_PushArray(LastKarma[victim][type].lastPos, 3);
-		Call_PushString(LastKarma[victim][type].artistSteamId);
-		Call_PushString(LastKarma[victim][type].artistName);
-		Call_PushString(KarmaName);
-		Call_PushCell(false);
-		Call_PushCell(true);
-		Call_PushCell(GetConVarBool(karmaOnlyConfirmed));
+			Call_PushCell(victim);
+			Call_PushArray(LastKarma[victim][type].lastPos, 3);
+			Call_PushString(LastKarma[victim][type].artistSteamId);
+			Call_PushString(LastKarma[victim][type].artistName);
+			Call_PushString(KarmaName);
+			Call_PushCell(false);
+			Call_PushCell(true);
+			Call_PushCell(GetConVarBool(karmaOnlyConfirmed));
 
-		Call_Finish();
+			Call_Finish();
+		}
 	}
 
 	// Major changes might make this unnecessary anymore.
