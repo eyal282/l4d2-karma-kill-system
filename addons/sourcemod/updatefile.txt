@@ -2,10 +2,10 @@
 {
 	"Version"
 	{
-		"Latest"	"2.5"
+		"Latest"	"2.6"
 	}
 	
-	"Notes"	"Got rid of possible jockey teleport to null, got rid of very common bug of false karma."
+	"Notes"	"Karma jump is now enabled mandatorily."
 }
 	
 "Files"
