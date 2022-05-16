@@ -81,6 +81,8 @@ public void OnConfigsExecuted()
 /**
  * Description
  *
+ * @param victim             Player who got killed by the karma jump. This can be anybody. Useful to revive the victim.
+ * @param lastPos            Origin from which the jump began.
  * @param jumperSteamId      Artist name.
  * @param jumperName     	 Artist steam ID.
  * @param KarmaName          Name of karma: "Charge", "Impact", "Jockey", "Slap", "Punch", "Smoke"
@@ -99,7 +101,7 @@ public void OnConfigsExecuted()
 
 
  */
-public void KarmaKillSystem_OnKarmaJumpPost(char[] jumperSteamId, char[] jumperName, const char[] KarmaName, bool bBird, bool bKillConfirmed, bool bOnlyConfirmed)
+public void KarmaKillSystem_OnKarmaJumpPost(int victim, float lastPos[3], char[] jumperSteamId, char[] jumperName, const char[] KarmaName, bool bBird, bool bKillConfirmed, bool bOnlyConfirmed)
 {
 	Jump_SendReport(jumperSteamId, jumperName);
 }

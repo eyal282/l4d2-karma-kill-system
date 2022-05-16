@@ -84,6 +84,7 @@ char karmaNames[KarmaType_MAX][] = {
 	"Jump",
 };
 
+// Todo: add artistTimestamp to detect the moment of jump.
 // I'll probably eventually add a logger for karma jumps and add "lastDistance" to this enum struct that dictates the closest special infected if maybe something messed up.
 enum struct enLastKarma
 {
@@ -91,6 +92,9 @@ enum struct enLastKarma
 	int  artist;
 	char artistName[64];
 	char artistSteamId[35];
+
+	// lastPos is only for karma jumps, it is the last origin a victim was before the jump.
+	float lastPos[3];
 }
 
 enLastKarma LastKarma[MAXPLAYERS + 1][KarmaType_MAX];
@@ -263,7 +267,7 @@ public void OnPluginStart()
 	CreateConVar("l4d2_karma_charge_version", PLUGIN_VERSION, " L4D2 Karma Charge Plugin Version ", FCVAR_DONTRECORD);
 	// triggeringHeight = 	AutoExecConfig_CreateConVar("l4d2_karma_charge_height",	"475.0", 		" What Height is considered karma ");
 	karmaPrefix                      = AutoExecConfig_CreateConVar("l4d2_karma_charge_prefix", "", "Prefix for announcements. For colors, replace the side the slash points towards, example is /x04[/x05KarmaCharge/x03]");
-	karmaJump                        = AutoExecConfig_CreateConVar("l4d2_karma_jump", "0", "Enable karma jumping. Karma jumping only registers on confirmed kills.");
+	karmaJump                        = AutoExecConfig_CreateConVar("l4d2_karma_jump", "1", "Enable karma jumping. Karma jumping only registers on confirmed kills.");
 	karmaAwardConfirmed              = AutoExecConfig_CreateConVar("l4d2_karma_award_confirmed", "1", "Award a confirmed karma maker with a player_death event.");
 	karmaOnlyConfirmed               = AutoExecConfig_CreateConVar("l4d2_karma_only_confirmed", "0", "Whenever or not to make karma announce only happen upon death.");
 	karmaBirdCharge                  = AutoExecConfig_CreateConVar("l4d2_karma_charge_bird", "1", "Whether or not to enable bird charges, which are unlethal height charges.");
@@ -285,7 +289,7 @@ public void OnPluginStart()
 	AutoExecConfig_CleanFile();
 
 	fw_OnKarmaEventPost = CreateGlobalForward("KarmaKillSystem_OnKarmaEventPost", ET_Ignore, Param_Cell, Param_Cell, Param_String, Param_Cell, Param_Cell, Param_Cell);
-	fw_OnKarmaJumpPost  = CreateGlobalForward("KarmaKillSystem_OnKarmaJumpPost", ET_Ignore, Param_String, Param_String, Param_String, Param_Cell, Param_Cell, Param_Cell);
+	fw_OnKarmaJumpPost  = CreateGlobalForward("KarmaKillSystem_OnKarmaJumpPost", ET_Ignore, Param_Cell, Param_Array, Param_String, Param_String, Param_String, Param_Cell, Param_Cell, Param_Cell);
 
 	HookConVarChange(cvarisEnabled, _cvarChange);
 	// HookConVarChange(triggeringHeight, 	_cvarChange);
@@ -332,6 +336,8 @@ forward void KarmaKillSystem_OnKarmaEventPost(int victim, int attacker, const ch
 /**
  * Description
  *
+ * @param victim             Player who got killed by the karma jump. This can be anybody. Useful to revive the victim.
+ * @param lastPos            Origin from which the jump began.
  * @param jumperSteamId      Artist name.
  * @param jumperName     	 Artist steam ID.
  * @param KarmaName          Name of karma: "Charge", "Impact", "Jockey", "Slap", "Punch", "Smoke"
@@ -350,7 +356,7 @@ forward void KarmaKillSystem_OnKarmaEventPost(int victim, int attacker, const ch
 
 
  */
-forward void KarmaKillSystem_OnKarmaJumpPost(char[] jumperSteamId, char[] jumperName, const char[] KarmaName, bool bBird, bool bKillConfirmed, bool bOnlyConfirmed);
+forward void KarmaKillSystem_OnKarmaJumpPost(int victim, float lastPos[3], char[] jumperSteamId, char[] jumperName, const char[] KarmaName, bool bBird, bool bKillConfirmed, bool bOnlyConfirmed);
 
 public void OnAllPluginsLoaded()
 {
@@ -1443,7 +1449,7 @@ public Action event_PlayerJump(Handle event, const char[] name, bool dontBroadca
 	if (!isEnabled || !victim || L4D_GetClientTeam(victim) != L4DTeam_Survivor)
 		return Plugin_Continue;
 
-	AttachKarmaToVictim(victim, victim, KT_Jump);
+	AttachKarmaToVictim(victim, victim, KT_Jump, true);
 
 	if (JumpRegisterTimer[victim] != INVALID_HANDLE)
 	{
@@ -1962,6 +1968,8 @@ void AnnounceKarma(int client, int victim, int type, bool bBird, bool bKillConfi
 	{
 		Call_StartForward(fw_OnKarmaJumpPost);
 
+		Call_PushCell(victim);
+		Call_PushArray(LastKarma[victim][type].lastPos, 3);
 		Call_PushString(LastKarma[victim][type].artistSteamId);
 		Call_PushString(LastKarma[victim][type].artistName);
 		Call_PushString(KarmaName);
@@ -2871,11 +2879,14 @@ stock bool Takeovers_PointToSteamId(int firstSnowflake, Handle snapshot, const c
 
 */
 
-stock void AttachKarmaToVictim(int victim, int attacker, int type)
+stock void AttachKarmaToVictim(int victim, int attacker, int type, bool bLastPos = false)
 {
 	LastKarma[victim][type].artist = attacker;
 	GetClientName(attacker, LastKarma[victim][type].artistName, sizeof(enLastKarma::artistName));
 	GetClientAuthId(attacker, AuthId_Steam2, LastKarma[victim][type].artistSteamId, sizeof(enLastKarma::artistSteamId));
+
+	if (bLastPos)
+		GetClientAbsOrigin(victim, LastKarma[victim][type].lastPos);
 }
 
 stock void StripKarmaArtistFromVictim(int victim, int type)
