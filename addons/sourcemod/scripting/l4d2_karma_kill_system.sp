@@ -15,7 +15,7 @@
 
 #define UPDATE_URL "https://raw.githubusercontent.com/eyal282/l4d2-karma-kill-system/master/addons/sourcemod/updatefile.txt"
 
-#define PLUGIN_VERSION "2.7"
+#define PLUGIN_VERSION "2.8"
 
 // TEST_DEBUG is always 1 if the server's name contains "Test Server"
 bool TEST_DEBUG = false;
@@ -2084,6 +2084,8 @@ stock int GetCarryVictim(int client)
 stock void SlowTime(const char[] re_Acceleration = "2.0", const char[] minBlendRate = "1.0", const char[] blendDeltaMultiplier = "2.0", float fTime = -1.0, float fSlowPower = -65535.0)
 {
 	char desiredTimeScale[16];
+	char sAddOutput[64];
+
 	if (fSlowPower == -65535.0)
 	{
 		fSlowPower = GetConVarFloat(karmaSlow);
@@ -2106,15 +2108,22 @@ stock void SlowTime(const char[] re_Acceleration = "2.0", const char[] minBlendR
 
 	if (fSlowPower == 1.0)
 	{
-		AcceptEntityInput(ent, "Reset");
+		int theWorldEnt = -1;
 
-		AcceptEntityInput(ent, "Kill");
+		while ((theWorldEnt = FindEntityByTargetname(theWorldEnt, "THE WORLD", true, false)) != -1)
+		{
+			AcceptEntityInput(theWorldEnt, "Stop");
+
+			// Must compensate for the timescale making every single timer slower, both CreateTimer type timers and OnUser1 type timers
+			FormatEx(sAddOutput, sizeof(sAddOutput), "OnUser2 !self:Kill::3.0:1");
+			SetVariantString(sAddOutput);
+			AcceptEntityInput(theWorldEnt, "AddOutput");
+			AcceptEntityInput(theWorldEnt, "FireUser2");
+		}
 	}
 	else
 	{
 		AcceptEntityInput(ent, "Start");
-
-		char sAddOutput[64];
 
 		if (fTime == -1.0)
 			fTime = GetConVarFloat(karmaSlowTimeOnServer);
