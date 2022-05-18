@@ -3,7 +3,7 @@
 #pragma semicolon 1
 
 #define PLUGIN_AUTHOR  "RumbleFrog, SourceBans++ Dev Team, edit by Eyal282"
-#define PLUGIN_VERSION "1.0"
+#define PLUGIN_VERSION "1.1"
 
 #include <left4dhooks>
 #include <sourcemod>
@@ -47,7 +47,7 @@ public void OnAllPluginsLoaded()
 
 #if defined _autoexecconfig_included
 
-	AutoExecConfig_SetFile("l4d2_karma_jump_discord");
+	AutoExecConfig_SetFile("l4d2_karma_jump_auto");
 
 #endif
 
