@@ -2,15 +2,19 @@
 {
 	"Version"
 	{
-		"Latest"	"2.8"
+		"Latest"	"3.0"
 	}
 	
-	"Notes"	"Hot fix for permanent server slowdown."
+	"Notes"	"Every plugin is auto updated now."
 }
 	
 "Files"
 {
 	"Plugin"	"Path_SM/plugins/l4d2_karma_kill_system.smx"
+	"Plugin"	"Path_SM/plugins/l4d2_karma_jump_discord.smx"
+	"Plugin"	"Path_SM/plugins/l4d2_karma_jump_auto.smx"
 	
 	"Source"	"Path_SM/scripting/l4d2_karma_kill_system.sp"
+	"Source"	"Path_SM/scripting/l4d2_karma_jump_discord.sp"
+	"Source"	"Path_SM/scripting/l4d2_karma_jump_auto.sp"
 }
