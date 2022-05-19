@@ -15,7 +15,7 @@
 
 #define UPDATE_URL "https://raw.githubusercontent.com/eyal282/l4d2-karma-kill-system/master/addons/sourcemod/updatefile.txt"
 
-#define PLUGIN_VERSION "2.8"
+#define PLUGIN_VERSION "2.9"
 
 // TEST_DEBUG is always 1 if the server's name contains "Test Server"
 bool TEST_DEBUG = false;
@@ -1971,6 +1971,7 @@ void AnnounceKarma(int client, int victim, int type, bool bBird, bool bKillConfi
 			Call_StartForward(fw_OnKarmaJumpPost);
 
 			Call_PushCell(victim);
+
 			Call_PushArray(LastKarma[victim][type].lastPos, 3);
 			Call_PushString(LastKarma[victim][type].artistSteamId);
 			Call_PushString(LastKarma[victim][type].artistName);
@@ -2978,6 +2979,7 @@ stock void TransferKarmaToVictim(int toVictim, int fromVictim)
 			LastKarma[toVictim][i].artist        = toVictim;
 			LastKarma[toVictim][i].artistName    = LastKarma[fromVictim][i].artistName;
 			LastKarma[toVictim][i].artistSteamId = LastKarma[fromVictim][i].artistSteamId;
+			LastKarma[toVictim][i].lastPos       = LastKarma[fromVictim][i].lastPos;
 		}
 	}
 

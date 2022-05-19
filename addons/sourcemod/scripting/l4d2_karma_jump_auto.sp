@@ -3,7 +3,7 @@
 #pragma semicolon 1
 
 #define PLUGIN_AUTHOR  "RumbleFrog, SourceBans++ Dev Team, edit by Eyal282"
-#define PLUGIN_VERSION "1.1"
+#define PLUGIN_VERSION "1.2"
 
 #include <left4dhooks>
 #include <sourcemod>
@@ -19,6 +19,9 @@ ConVar Convar_AutoBanTime;
 ConVar Convar_AutoBanPlayTime;
 
 StringMap g_smLogins;
+
+bool  g_bCheckTakeover[MAXPLAYERS + 1];
+float g_fProperOrigin[MAXPLAYERS + 1][3];
 
 public Plugin myinfo =
 {
@@ -39,6 +42,7 @@ public void OnPluginStart()
 	CreateConVar("l4d2_karma_jump_discord_version", PLUGIN_VERSION, "Karma Jump Discord Version", FCVAR_REPLICATED | FCVAR_SPONLY | FCVAR_DONTRECORD | FCVAR_NOTIFY);
 
 	HookEvent("bot_player_replace", event_PlayerReplacesABot, EventHookMode_Post);
+	HookEvent("player_bot_replace", event_BotReplacesAPlayer, EventHookMode_Post);
 }
 
 public void OnAllPluginsLoaded()
@@ -62,6 +66,21 @@ public void OnAllPluginsLoaded()
 	AutoExecConfig_CleanFile();
 
 #endif
+}
+
+public Action event_BotReplacesAPlayer(Handle event, const char[] name, bool dontBroadcast)
+{
+	int newPlayer = GetClientOfUserId(GetEventInt(event, "bot"));
+	int oldPlayer = GetClientOfUserId(GetEventInt(event, "player"));
+
+	if (g_bCheckTakeover[oldPlayer])
+	{
+		g_bCheckTakeover[oldPlayer] = false;
+
+		L4D_RespawnPlayer(newPlayer);
+
+		TeleportEntity(newPlayer, g_fProperOrigin[oldPlayer], NULL_VECTOR, NULL_VECTOR);
+	}
 }
 
 public Action event_PlayerReplacesABot(Handle event, const char[] name, bool dontBroadcast)
@@ -109,14 +128,39 @@ public void KarmaKillSystem_OnKarmaJumpPost(int victim, float lastPos[3], char[]
 	{
 		if (GetConVarBool(Convar_AutoRevive))
 		{
-			DataPack DP;
-			CreateDataTimer(0.1, Timer_Respawn, DP, TIMER_FLAG_NO_MAPCHANGE);
+			if (victim == 0)
+			{
+				int insect = FindClientByAuthId(jumperSteamId);
 
-			WritePackCell(DP, GetClientUserId(victim));
-			WritePackString(DP, jumperSteamId);
-			WritePackCell(DP, lastPos[0]);
-			WritePackCell(DP, lastPos[1]);
-			WritePackCell(DP, lastPos[2]);
+				if (insect != 0)
+				{
+					KickClient(insect, "It appears that you're getting checkmated");
+				}
+
+				return;
+			}
+
+			int insect = FindClientByAuthId(jumperSteamId);
+
+			if (insect == 0 || insect != victim)
+			{
+				Handle DP = CreateDataPack();
+
+				WritePackCell(DP, victim);
+				WritePackFloat(DP, lastPos[0]);
+				WritePackFloat(DP, lastPos[1]);
+				WritePackFloat(DP, lastPos[2]);
+
+				RequestFrame(Frame_Respawn, DP);
+			}
+			else
+			{
+				g_bCheckTakeover[insect] = true;
+				g_fProperOrigin[insect]  = lastPos;
+			}
+
+			if (insect != 0)
+				KickClient(insect, "It appears that you're getting checkmated");
 		}
 
 		ServerCommand("sm_addban %i \"%s\" Karma Jump detected %.2f seconds after login.", GetConVarInt(Convar_AutoBanTime), jumperSteamId, GetGameTime() - fLastLogin);
@@ -128,45 +172,27 @@ public void KarmaKillSystem_OnKarmaJumpPost(int victim, float lastPos[3], char[]
 	}
 }
 
-public Action Timer_Respawn(Handle hTimer, Handle DP)
+public void Frame_Respawn(Handle DP)
 {
 	ResetPack(DP);
 
-	int victim = GetClientOfUserId(ReadPackCell(DP));
-
-	char jumperSteamId[35];
-	ReadPackString(DP, jumperSteamId, sizeof(jumperSteamId));
+	int victim = ReadPackCell(DP);
 
 	float lastPos[3];
 
-	lastPos[0] = ReadPackCell(DP);
-	lastPos[1] = ReadPackCell(DP);
-	lastPos[2] = ReadPackCell(DP);
+	lastPos[0] = ReadPackFloat(DP);
+	lastPos[1] = ReadPackFloat(DP);
+	lastPos[2] = ReadPackFloat(DP);
 
-	if (victim == 0)
-	{
-		int insect = FindClientByAuthId(jumperSteamId);
+	CloseHandle(DP);
 
-		if (insect != 0)
-		{
-			KickClient(insect, "It appears that you're getting checkmated");
-		}
-
-		return Plugin_Stop;
-	}
+	// Clients cannot replace eachother in a single frame, only invalidate.
+	if (!IsClientInGame(victim))
+		return;
 
 	L4D_RespawnPlayer(victim);
 
 	TeleportEntity(victim, lastPos, NULL_VECTOR, NULL_VECTOR);
-
-	int insect = FindClientByAuthId(jumperSteamId);
-
-	if (insect != 0)
-	{
-		KickClient(insect, "It appears that you're getting checkmated");
-	}
-
-	return Plugin_Continue;
 }
 
 #if defined _autoexecconfig_included
