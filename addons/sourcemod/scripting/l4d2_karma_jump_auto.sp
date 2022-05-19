@@ -3,7 +3,7 @@
 #pragma semicolon 1
 
 #define PLUGIN_AUTHOR  "RumbleFrog, SourceBans++ Dev Team, edit by Eyal282"
-#define PLUGIN_VERSION "1.1"
+#define PLUGIN_VERSION "1.2"
 
 #include <left4dhooks>
 #include <sourcemod>
@@ -154,10 +154,16 @@ public Action Timer_Respawn(Handle hTimer, Handle DP)
 
 		return Plugin_Stop;
 	}
+	DataPack pack = new DataPack();
+	WritePackCell(pack, lastPos[0]);
+	WritePackCell(pack, lastPos[1]);
+	WritePackCell(pack, lastPos[2]);
+	WritePackCell(pack, GetClientUserId(victim));
 
-	L4D_RespawnPlayer(victim);
+	CreateDataTimer(1.0, RespawnAndTeleport, pack, TIMER_FLAG_NO_MAPCHANGE);
+	//L4D_RespawnPlayer(victim);
 
-	TeleportEntity(victim, lastPos, NULL_VECTOR, NULL_VECTOR);
+	//TeleportEntity(victim, lastPos, NULL_VECTOR, NULL_VECTOR);
 
 	int insect = FindClientByAuthId(jumperSteamId);
 
@@ -170,6 +176,18 @@ public Action Timer_Respawn(Handle hTimer, Handle DP)
 }
 
 #if defined _autoexecconfig_included
+
+public Action RespawnAndTeleport(Handle Timer, DataPack pack)
+{
+	ResetPack(pack);
+	int victim = GetClientOfUserId(ReadPackCell(pack));
+	float lastPos[3];
+	lastPos[0] = ReadPackCell(pack);
+	lastPos[1] = ReadPackCell(pack);
+	lastPos[2] = ReadPackCell(pack);
+	L4D_RespawnPlayer(victim);
+	TeleportEntity(victim, lastPos, NULL_VECTOR, NULL_VECTOR);
+}
 
 stock ConVar UC_CreateConVar(const char[] name, const char[] defaultValue, const char[] description = "", int flags = 0, bool hasMin = false, float min = 0.0, bool hasMax = false, float max = 0.0)
 {
