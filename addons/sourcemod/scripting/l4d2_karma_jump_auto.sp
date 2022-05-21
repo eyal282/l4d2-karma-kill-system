@@ -146,6 +146,7 @@ public void KarmaKillSystem_OnKarmaJumpPost(int victim, float lastPos[3], int ju
 {
 	if (GetConVarInt(Convar_AutoBanTime) < 0)
 		return;
+
 	char sBanMessage[128];
 	GetConVarString(Convar_AutoBanMessage, sBanMessage, sizeof(sBanMessage));
 	float fLastLogin;
@@ -161,7 +162,7 @@ public void KarmaKillSystem_OnKarmaJumpPost(int victim, float lastPos[3], int ju
 
 				if (insect != 0)
 				{
-					KickClient(insect, "%s", sBanMessage);
+					KickClient(insect, sBanMessage);
 				}
 
 				return;
@@ -216,7 +217,7 @@ public void KarmaKillSystem_OnKarmaJumpPost(int victim, float lastPos[3], int ju
 			}
 
 			if (insect != 0)
-				KickClient(insect, "%s", sBanMessage);
+				KickClient(insect, sBanMessage);
 		}
 
 		ServerCommand("sm_addban %i \"%s\" Karma Jump detected %.2f seconds after login.", GetConVarInt(Convar_AutoBanTime), jumperSteamId, GetGameTime() - fLastLogin);
