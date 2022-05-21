@@ -2,7 +2,7 @@
 #pragma semicolon 1
 
 #define PLUGIN_AUTHOR  "RumbleFrog, SourceBans++ Dev Team, edit by Eyal282"
-#define PLUGIN_VERSION "1.0"
+#define PLUGIN_VERSION "1.1"
 
 #include <smjansson>
 #include <sourcemod>
@@ -83,25 +83,16 @@ public void OnConfigsExecuted()
  *
  * @param victim             Player who got killed by the karma jump. This can be anybody. Useful to revive the victim.
  * @param lastPos            Origin from which the jump began.
- * @param jumperSteamId      Artist name.
- * @param jumperName     	 Artist steam ID.
- * @param KarmaName          Name of karma: "Charge", "Impact", "Jockey", "Slap", "Punch", "Smoke"
- * @param bBird              true if a bird charge event occured, false if a karma kill was detected or performed.
- * @param bKillConfirmed     Whether or not this indicates the complete death of the player. This is NOT just !IsPlayerAlive(victim)
- * @param bOnlyConfirmed     Whether or not only kill confirmed are allowed.
+ * @param jumperWeapons		 Weapons of the jumper at the moment of the jump.
+ * @param jumperHealth    	 jumperHealth[0] and jumperHealth[1] = Health and Temp health from which the jump began.
+ * @param jumperTimestamp    Timestamp from which the jump began.
+ * @param jumperSteamId      jumper's Steam ID.
+ * @param jumperName     	 jumper's name
 
  * @noreturn
- * @note					This can be called more than once. One for the announcement, one for the kill confirmed.
-                            If you want to reward both killconfirmed and killunconfirmed you should reward when killconfirmed is false.
-                            If you want to reward if killconfirmed you should reward when killconfirmed is true.
-
- * @note					If the plugin makes a kill confirmed without a previous announcement without kill confirmed,
-                            it compensates by sending two consecutive events, one without kill confirmed, one with kill confirmed.
-
-
 
  */
-public void KarmaKillSystem_OnKarmaJumpPost(int victim, float lastPos[3], char[] jumperSteamId, char[] jumperName, const char[] KarmaName, bool bBird, bool bKillConfirmed, bool bOnlyConfirmed)
+public void KarmaKillSystem_OnKarmaJumpPost(int victim, float lastPos[3], int jumperWeapons[64], int jumperHealth[2], float jumperTimestamp, char[] jumperSteamId, char[] jumperName)
 {
 	Jump_SendReport(jumperSteamId, jumperName);
 }

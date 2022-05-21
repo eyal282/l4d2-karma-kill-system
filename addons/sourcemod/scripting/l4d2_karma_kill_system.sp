@@ -15,7 +15,7 @@
 
 #define UPDATE_URL "https://raw.githubusercontent.com/eyal282/l4d2-karma-kill-system/master/addons/sourcemod/updatefile.txt"
 
-#define PLUGIN_VERSION "2.9"
+#define PLUGIN_VERSION "3.1"
 
 // TEST_DEBUG is always 1 if the server's name contains "Test Server"
 bool TEST_DEBUG = false;
@@ -95,6 +95,13 @@ enum struct enLastKarma
 
 	// lastPos is only for karma jumps, it is the last origin a victim was before the jump.
 	float lastPos[3];
+
+	// artistHealth is only for karma jumps. It is the health the player had prior to the jump.
+	// artistWeapons is only for karma jumps. It is the list of weapons the player had prior to the jump.
+	// artistTimestamp is only for karma jumps, it is the timestamp
+	int   artistHealth[2];
+	int   artistWeapons[64];
+	float artistTimestamp;
 }
 
 enLastKarma LastKarma[MAXPLAYERS + 1][KarmaType_MAX];
@@ -289,7 +296,7 @@ public void OnPluginStart()
 	AutoExecConfig_CleanFile();
 
 	fw_OnKarmaEventPost = CreateGlobalForward("KarmaKillSystem_OnKarmaEventPost", ET_Ignore, Param_Cell, Param_Cell, Param_String, Param_Cell, Param_Cell, Param_Cell);
-	fw_OnKarmaJumpPost  = CreateGlobalForward("KarmaKillSystem_OnKarmaJumpPost", ET_Ignore, Param_Cell, Param_Array, Param_String, Param_String, Param_String, Param_Cell, Param_Cell, Param_Cell);
+	fw_OnKarmaJumpPost  = CreateGlobalForward("KarmaKillSystem_OnKarmaJumpPost", ET_Ignore, Param_Cell, Param_Array, Param_Array, Param_Array, Param_Cell, Param_String, Param_String);
 
 	HookConVarChange(cvarisEnabled, _cvarChange);
 	// HookConVarChange(triggeringHeight, 	_cvarChange);
@@ -338,25 +345,16 @@ forward void KarmaKillSystem_OnKarmaEventPost(int victim, int attacker, const ch
  *
  * @param victim             Player who got killed by the karma jump. This can be anybody. Useful to revive the victim.
  * @param lastPos            Origin from which the jump began.
- * @param jumperSteamId      Artist name.
- * @param jumperName     	 Artist steam ID.
- * @param KarmaName          Name of karma: "Charge", "Impact", "Jockey", "Slap", "Punch", "Smoke"
- * @param bBird              true if a bird charge event occured, false if a karma kill was detected or performed.
- * @param bKillConfirmed     Whether or not this indicates the complete death of the player. This is NOT just !IsPlayerAlive(victim)
- * @param bOnlyConfirmed     Whether or not only kill confirmed are allowed.
+ * @param jumperWeapons		 Weapons of the jumper at the moment of the jump.
+ * @param jumperHealth    	 jumperHealth[0] and jumperHealth[1] = Health and Temp health from which the jump began.
+ * @param jumperTimestamp    Timestamp from which the jump began.
+ * @param jumperSteamId      jumper's Steam ID.
+ * @param jumperName     	 jumper's name
 
  * @noreturn
- * @note					This can be called more than once. One for the announcement, one for the kill confirmed.
-                            If you want to reward both killconfirmed and killunconfirmed you should reward when killconfirmed is false.
-                            If you want to reward if killconfirmed you should reward when killconfirmed is true.
-
- * @note					If the plugin makes a kill confirmed without a previous announcement without kill confirmed,
-                            it compensates by sending two consecutive events, one without kill confirmed, one with kill confirmed.
-
-
 
  */
-forward void KarmaKillSystem_OnKarmaJumpPost(int victim, float lastPos[3], char[] jumperSteamId, char[] jumperName, const char[] KarmaName, bool bBird, bool bKillConfirmed, bool bOnlyConfirmed);
+forward void KarmaKillSystem_OnKarmaJumpPost(int victim, float lastPos[3], int jumperWeapons[64], int jumperHealth[2], float jumperTimestamp, char[] jumperSteamId, char[] jumperName);
 
 public void OnAllPluginsLoaded()
 {
@@ -1973,12 +1971,11 @@ void AnnounceKarma(int client, int victim, int type, bool bBird, bool bKillConfi
 			Call_PushCell(victim);
 
 			Call_PushArray(LastKarma[victim][type].lastPos, 3);
+			Call_PushArray(LastKarma[victim][type].artistWeapons, 64);
+			Call_PushArray(LastKarma[victim][type].artistHealth, 2);
+			Call_PushCell(LastKarma[victim][type].artistTimestamp);
 			Call_PushString(LastKarma[victim][type].artistSteamId);
 			Call_PushString(LastKarma[victim][type].artistName);
-			Call_PushString(KarmaName);
-			Call_PushCell(false);
-			Call_PushCell(true);
-			Call_PushCell(GetConVarBool(karmaOnlyConfirmed));
 
 			Call_Finish();
 		}
@@ -2488,7 +2485,7 @@ stock bool CanClientSurviveFall(int client, float fTotalDistance)
 			// Can survive the fall if either:
 			// 1. Player has more total health to survive the damage it deals.
 			// 2. The damage dealt is lower than the fatal fall damage.
-			return GetEntProp(client, Prop_Send, "m_iHealth") + L4D_GetTempHealth(client) > RoundToFloor(fDistancesVsDamages[i][1]) || fDistancesVsDamages[i][1] < fFatalFallDaamage;
+			return GetEntProp(client, Prop_Send, "m_iHealth") + L4D_GetPlayerTempHealth(client) > RoundToFloor(fDistancesVsDamages[i][1]) || fDistancesVsDamages[i][1] < fFatalFallDaamage;
 		}
 	}
 
@@ -2899,9 +2896,30 @@ stock void AttachKarmaToVictim(int victim, int attacker, int type, bool bLastPos
 	GetClientAuthId(attacker, AuthId_Steam2, LastKarma[victim][type].artistSteamId, sizeof(enLastKarma::artistSteamId));
 
 	if (bLastPos)
+	{
 		GetClientAbsOrigin(victim, LastKarma[victim][type].lastPos);
+		LastKarma[victim][type].artistTimestamp = GetGameTime();
+		LastKarma[victim][type].artistHealth[0] = GetEntityHealth(victim);
+		LastKarma[victim][type].artistHealth[1] = L4D_GetPlayerTempHealth(victim);
+
+		int num = 0;
+
+		for (int i = 0; i < GetEntPropArraySize(victim, Prop_Send, "m_hMyWeapons"); i++)
+		{
+			int weapon = GetEntPropEnt(victim, Prop_Send, "m_hMyWeapons", i);
+
+			if (weapon != -1)
+			{
+				LastKarma[victim][type].artistWeapons[num++] = weapon;
+			}
+		}
+	}
 }
 
+stock int GetEntityHealth(int client)
+{
+	return GetEntProp(client, Prop_Send, "m_iHealth");
+}
 stock void StripKarmaArtistFromVictim(int victim, int type)
 {
 	if (type == KarmaType_MAX)
@@ -2976,10 +2994,18 @@ stock void TransferKarmaToVictim(int toVictim, int fromVictim)
 		if (LastKarma[fromVictim][i].artist != 0)
 		{
 			// .artist is swapped because someone needs to be credited in rewards..
-			LastKarma[toVictim][i].artist        = toVictim;
-			LastKarma[toVictim][i].artistName    = LastKarma[fromVictim][i].artistName;
-			LastKarma[toVictim][i].artistSteamId = LastKarma[fromVictim][i].artistSteamId;
-			LastKarma[toVictim][i].lastPos       = LastKarma[fromVictim][i].lastPos;
+			LastKarma[toVictim][i].artist          = toVictim;
+			LastKarma[toVictim][i].artistName      = LastKarma[fromVictim][i].artistName;
+			LastKarma[toVictim][i].artistSteamId   = LastKarma[fromVictim][i].artistSteamId;
+			LastKarma[toVictim][i].lastPos         = LastKarma[fromVictim][i].lastPos;
+			LastKarma[toVictim][i].artistTimestamp = LastKarma[fromVictim][i].artistTimestamp;
+			LastKarma[toVictim][i].artistHealth[0] = LastKarma[fromVictim][i].artistHealth[0];
+			LastKarma[toVictim][i].artistHealth[1] = LastKarma[fromVictim][i].artistHealth[1];
+
+			for (int a = 0; a < 64; a++)
+			{
+				LastKarma[toVictim][i].artistWeapons[a] = LastKarma[fromVictim][i].artistWeapons[a];
+			}
 		}
 	}
 

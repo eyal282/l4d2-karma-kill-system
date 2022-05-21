@@ -3,7 +3,7 @@
 #pragma semicolon 1
 
 #define PLUGIN_AUTHOR  "RumbleFrog, SourceBans++ Dev Team, edit by Eyal282"
-#define PLUGIN_VERSION "1.2"
+#define PLUGIN_VERSION "1.3"
 
 #include <left4dhooks>
 #include <sourcemod>
@@ -22,6 +22,8 @@ StringMap g_smLogins;
 
 bool  g_bCheckTakeover[MAXPLAYERS + 1];
 float g_fProperOrigin[MAXPLAYERS + 1][3];
+int   g_iProperWeapons[MAXPLAYERS + 1][64];
+int   g_iProperHealth[MAXPLAYERS + 1][2];
 
 public Plugin myinfo =
 {
@@ -77,9 +79,40 @@ public Action event_BotReplacesAPlayer(Handle event, const char[] name, bool don
 	{
 		g_bCheckTakeover[oldPlayer] = false;
 
-		L4D_RespawnPlayer(newPlayer);
+		Handle DP = CreateDataPack();
 
-		TeleportEntity(newPlayer, g_fProperOrigin[oldPlayer], NULL_VECTOR, NULL_VECTOR);
+		WritePackCell(DP, newPlayer);
+		WritePackFloat(DP, g_fProperOrigin[oldPlayer][0]);
+		WritePackFloat(DP, g_fProperOrigin[oldPlayer][1]);
+		WritePackFloat(DP, g_fProperOrigin[oldPlayer][2]);
+
+		WritePackCell(DP, g_iProperHealth[oldPlayer][0]);
+		WritePackCell(DP, g_iProperHealth[oldPlayer][1]);
+		int num = 0;
+
+		for (int i = 0; i < 64; i++)
+		{
+			int weapon = g_iProperWeapons[oldPlayer][i];
+
+			if (weapon != 0 && IsValidEntity(weapon))
+			{
+				num++;
+			}
+		}
+
+		WritePackCell(DP, num);
+
+		for (int i = 0; i < 64; i++)
+		{
+			int weapon = g_iProperWeapons[oldPlayer][i];
+
+			if (weapon != 0 && IsValidEntity(weapon))
+			{
+				WritePackCell(DP, weapon);
+			}
+		}
+
+		Frame_Respawn(DP);
 	}
 }
 
@@ -98,25 +131,16 @@ public Action event_PlayerReplacesABot(Handle event, const char[] name, bool don
  *
  * @param victim             Player who got killed by the karma jump. This can be anybody. Useful to revive the victim.
  * @param lastPos            Origin from which the jump began.
- * @param jumperSteamId      Artist name.
- * @param jumperName     	 Artist steam ID.
- * @param KarmaName          Name of karma: "Charge", "Impact", "Jockey", "Slap", "Punch", "Smoke"
- * @param bBird              true if a bird charge event occured, false if a karma kill was detected or performed.
- * @param bKillConfirmed     Whether or not this indicates the complete death of the player. This is NOT just !IsPlayerAlive(victim)
- * @param bOnlyConfirmed     Whether or not only kill confirmed are allowed.
+ * @param jumperWeapons		 Weapons of the jumper at the moment of the jump.
+ * @param jumperHealth    	 jumperHealth[0] and jumperHealth[1] = Health and Temp health from which the jump began.
+ * @param jumperTimestamp    Timestamp from which the jump began.
+ * @param jumperSteamId      jumper's Steam ID.
+ * @param jumperName     	 jumper's name
 
  * @noreturn
- * @note					This can be called more than once. One for the announcement, one for the kill confirmed.
-                            If you want to reward both killconfirmed and killunconfirmed you should reward when killconfirmed is false.
-                            If you want to reward if killconfirmed you should reward when killconfirmed is true.
-
- * @note					If the plugin makes a kill confirmed without a previous announcement without kill confirmed,
-                            it compensates by sending two consecutive events, one without kill confirmed, one with kill confirmed.
-
-
 
  */
-public void KarmaKillSystem_OnKarmaJumpPost(int victim, float lastPos[3], char[] jumperSteamId, char[] jumperName, const char[] KarmaName, bool bBird, bool bKillConfirmed, bool bOnlyConfirmed)
+public void KarmaKillSystem_OnKarmaJumpPost(int victim, float lastPos[3], int jumperWeapons[64], int jumperHealth[2], float jumperTimestamp, char[] jumperSteamId, char[] jumperName)
 {
 	if (GetConVarInt(Convar_AutoBanTime) < 0)
 		return;
@@ -124,7 +148,7 @@ public void KarmaKillSystem_OnKarmaJumpPost(int victim, float lastPos[3], char[]
 	float fLastLogin;
 	g_smLogins.GetValue(jumperSteamId, fLastLogin);
 
-	if (GetGameTime() < fLastLogin + GetConVarFloat(Convar_AutoBanPlayTime))
+	if (jumperTimestamp < fLastLogin + GetConVarFloat(Convar_AutoBanPlayTime))
 	{
 		if (GetConVarBool(Convar_AutoRevive))
 		{
@@ -151,12 +175,41 @@ public void KarmaKillSystem_OnKarmaJumpPost(int victim, float lastPos[3], char[]
 				WritePackFloat(DP, lastPos[1]);
 				WritePackFloat(DP, lastPos[2]);
 
+				WritePackCell(DP, jumperHealth[0]);
+				WritePackCell(DP, jumperHealth[1]);
+
+				int num = 0;
+
+				for (int i = 0; i < 64; i++)
+				{
+					int weapon = jumperWeapons[i];
+
+					if (weapon != 0 && IsValidEntity(weapon))
+					{
+						num++;
+					}
+				}
+
+				WritePackCell(DP, num);
+
+				for (int i = 0; i < 64; i++)
+				{
+					int weapon = jumperWeapons[i];
+
+					if (weapon != 0 && IsValidEntity(weapon))
+					{
+						WritePackCell(DP, weapon);
+					}
+				}
+
 				RequestFrame(Frame_Respawn, DP);
 			}
 			else
 			{
 				g_bCheckTakeover[insect] = true;
 				g_fProperOrigin[insect]  = lastPos;
+				g_iProperWeapons[insect] = jumperWeapons;
+				g_iProperHealth[insect]  = jumperHealth;
 			}
 
 			if (insect != 0)
@@ -184,6 +237,18 @@ public void Frame_Respawn(Handle DP)
 	lastPos[1] = ReadPackFloat(DP);
 	lastPos[2] = ReadPackFloat(DP);
 
+	int health     = ReadPackCell(DP);
+	int tempHealth = ReadPackCell(DP);
+
+	int num = ReadPackCell(DP);
+
+	int weapons[64];
+
+	for (int i = 0; i < num; i++)
+	{
+		weapons[i] = ReadPackCell(DP);
+	}
+
 	CloseHandle(DP);
 
 	// Clients cannot replace eachother in a single frame, only invalidate.
@@ -193,6 +258,17 @@ public void Frame_Respawn(Handle DP)
 	L4D_RespawnPlayer(victim);
 
 	TeleportEntity(victim, lastPos, NULL_VECTOR, NULL_VECTOR);
+
+	SetEntityHealth(victim, health);
+	L4D_SetPlayerTempHealth(victim, tempHealth);
+
+	for (int i = 0; i < num; i++)
+	{
+		if (IsValidEntity(weapons[i]))
+		{
+			EquipPlayerWeapon(victim, weapons[i]);
+		}
+	}
 }
 
 #if defined _autoexecconfig_included
