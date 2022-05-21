@@ -2,10 +2,10 @@
 {
 	"Version"
 	{
-		"Latest"	"3.0"
+		"Latest"	"3.1"
 	}
 	
-	"Notes"	"Every plugin is auto updated now."
+	"Notes"	"Karma jumps reviver now restores weapons and health. Karma jump playtime is registered from moment of jump instead of moment of death ( ledge hang can be 30 seconds )"
 }
 	
 "Files"
