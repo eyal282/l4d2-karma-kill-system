@@ -17,6 +17,7 @@
 ConVar Convar_AutoRevive;
 ConVar Convar_AutoBanTime;
 ConVar Convar_AutoBanPlayTime;
+ConVar Convar_AutoBanMessage;
 
 StringMap g_smLogins;
 
@@ -60,6 +61,7 @@ public void OnAllPluginsLoaded()
 	Convar_AutoRevive      = UC_CreateConVar("l4d2_karma_jump_auto_revive", "1", "Revive the killed bot to the jumping position?", FCVAR_PROTECTED);
 	Convar_AutoBanTime     = UC_CreateConVar("l4d2_karma_jump_auto_ban", "10080", "Time to ban the jumping player, set to negative to disable.", FCVAR_PROTECTED);
 	Convar_AutoBanPlayTime = UC_CreateConVar("l4d2_karma_jump_auto_playtime", "30", "Ban only if karma jump is playing for less than this amount of time.", FCVAR_PROTECTED);
+	Convar_AutoBanMessage  = UC_CreateConVar("l4d2_karma_jump_auto_banmessage", "It appears that you're getting checkmated", "Message to display to banned player", FCVAR_PROTECTED);
 
 #if defined _autoexecconfig_included
 
@@ -144,7 +146,8 @@ public void KarmaKillSystem_OnKarmaJumpPost(int victim, float lastPos[3], int ju
 {
 	if (GetConVarInt(Convar_AutoBanTime) < 0)
 		return;
-
+	char sBanMessage[128];
+	GetConVarString(Convar_AutoBanMessage, sBanMessage, sizeof(sBanMessage));
 	float fLastLogin;
 	g_smLogins.GetValue(jumperSteamId, fLastLogin);
 
@@ -158,7 +161,7 @@ public void KarmaKillSystem_OnKarmaJumpPost(int victim, float lastPos[3], int ju
 
 				if (insect != 0)
 				{
-					KickClient(insect, "It appears that you're getting checkmated");
+					KickClient(insect, "%s", sBanMessage);
 				}
 
 				return;
@@ -213,7 +216,7 @@ public void KarmaKillSystem_OnKarmaJumpPost(int victim, float lastPos[3], int ju
 			}
 
 			if (insect != 0)
-				KickClient(insect, "It appears that you're getting checkmated");
+				KickClient(insect, "%s", sBanMessage);
 		}
 
 		ServerCommand("sm_addban %i \"%s\" Karma Jump detected %.2f seconds after login.", GetConVarInt(Convar_AutoBanTime), jumperSteamId, GetGameTime() - fLastLogin);
