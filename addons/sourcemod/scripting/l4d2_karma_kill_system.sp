@@ -15,7 +15,7 @@
 
 #define UPDATE_URL "https://raw.githubusercontent.com/eyal282/l4d2-karma-kill-system/master/addons/sourcemod/updatefile.txt"
 
-#define PLUGIN_VERSION "3.1"
+#define PLUGIN_VERSION "3.2"
 
 // TEST_DEBUG is always 1 if the server's name contains "Test Server"
 bool TEST_DEBUG = false;
@@ -912,7 +912,7 @@ public Action Timer_CheckLedgeChange(Handle hTimer, int userId)
 		int type;
 		int lastKarma = GetAnyLastKarma(victim, type);
 
-		if (lastKarma == 0)
+		if (lastKarma == 0 || GetConVarBool(karmaOnlyConfirmed) || type == KT_Jump)
 			return Plugin_Stop;
 
 		AnnounceKarma(lastKarma, victim, type, false, false, INVALID_HANDLE);
