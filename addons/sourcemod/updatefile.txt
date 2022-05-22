@@ -2,10 +2,10 @@
 {
 	"Version"
 	{
-		"Latest"	"3.1"
+		"Latest"	"3.2"
 	}
 	
-	"Notes"	"Karma jumps reviver now restores weapons and health. Karma jump playtime is registered from moment of jump instead of moment of death ( ledge hang can be 30 seconds )"
+	"Notes"	"Bug fix against double karma jump announcement."
 }
 	
 "Files"
