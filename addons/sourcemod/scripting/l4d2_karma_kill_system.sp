@@ -15,7 +15,7 @@
 
 #define UPDATE_URL "https://raw.githubusercontent.com/eyal282/l4d2-karma-kill-system/master/addons/sourcemod/updatefile.txt"
 
-#define PLUGIN_VERSION "3.2"
+#define PLUGIN_VERSION "3.3"
 
 // TEST_DEBUG is always 1 if the server's name contains "Test Server"
 bool TEST_DEBUG = false;
@@ -43,16 +43,17 @@ Handle cvarisEnabled                    = INVALID_HANDLE;
 Handle cvarNoFallDamageOnCarry          = INVALID_HANDLE;
 Handle cvarNoFallDamageProtectFromIncap = INVALID_HANDLE;
 
-Handle karmaPrefix           = INVALID_HANDLE;
-Handle karmaJump             = INVALID_HANDLE;
-Handle karmaAwardConfirmed   = INVALID_HANDLE;
-Handle karmaOnlyConfirmed    = INVALID_HANDLE;
-Handle karmaBirdCharge       = INVALID_HANDLE;
-Handle karmaSlowTimeOnServer = INVALID_HANDLE;
-Handle karmaSlowTimeOnCouple = INVALID_HANDLE;
-Handle karmaSlow             = INVALID_HANDLE;
-Handle cvarModeSwitch        = INVALID_HANDLE;
-Handle cvarCooldown          = INVALID_HANDLE;
+Handle karmaPrefix               = INVALID_HANDLE;
+Handle karmaJump                 = INVALID_HANDLE;
+Handle karmaAwardConfirmed       = INVALID_HANDLE;
+Handle karmaDamageAwardConfirmed = INVALID_HANDLE;
+Handle karmaOnlyConfirmed        = INVALID_HANDLE;
+Handle karmaBirdCharge           = INVALID_HANDLE;
+Handle karmaSlowTimeOnServer     = INVALID_HANDLE;
+Handle karmaSlowTimeOnCouple     = INVALID_HANDLE;
+Handle karmaSlow                 = INVALID_HANDLE;
+Handle cvarModeSwitch            = INVALID_HANDLE;
+Handle cvarCooldown              = INVALID_HANDLE;
 
 Handle cvarFatalFallDamage = INVALID_HANDLE;
 bool   isEnabled           = true;
@@ -257,6 +258,7 @@ public void OnPluginStart()
 	HookEvent("bot_player_replace", event_PlayerReplacesABot, EventHookMode_Post);
 	HookEvent("player_spawn", event_PlayerSpawn, EventHookMode_Post);
 
+	HookEvent("charger_carry_kill", event_ChargerKill, EventHookMode_Post);
 	HookEvent("charger_carry_start", event_ChargerGrab, EventHookMode_Post);
 	HookEvent("charger_carry_end", event_GrabEnded, EventHookMode_Post);
 	HookEvent("jockey_ride", event_jockeyRideStart, EventHookMode_Post);
@@ -276,16 +278,17 @@ public void OnPluginStart()
 	karmaPrefix                      = AutoExecConfig_CreateConVar("l4d2_karma_charge_prefix", "", "Prefix for announcements. For colors, replace the side the slash points towards, example is /x04[/x05KarmaCharge/x03]");
 	karmaJump                        = AutoExecConfig_CreateConVar("l4d2_karma_jump", "1", "Enable karma jumping. Karma jumping only registers on confirmed kills.");
 	karmaAwardConfirmed              = AutoExecConfig_CreateConVar("l4d2_karma_award_confirmed", "1", "Award a confirmed karma maker with a player_death event.");
+	karmaDamageAwardConfirmed        = AutoExecConfig_CreateConVar("l4d2_karma_damage_award_confirmed", "300", "Damage to award on confirmed kills, or -1 to disable. Requires l4d2_karma_award_confirmed set to 1");
 	karmaOnlyConfirmed               = AutoExecConfig_CreateConVar("l4d2_karma_only_confirmed", "0", "Whenever or not to make karma announce only happen upon death.");
-	karmaBirdCharge                  = AutoExecConfig_CreateConVar("l4d2_karma_charge_bird", "1", "Whether or not to enable bird charges, which are unlethal height charges.");
-	karmaSlowTimeOnServer            = AutoExecConfig_CreateConVar("l4d2_karma_charge_slowtime_on_server", "5.0", " How long does Time get slowed for the server");
-	karmaSlowTimeOnCouple            = AutoExecConfig_CreateConVar("l4d2_karma_charge_slowtime_on_couple", "3.0", " How long does Time get slowed for the karma couple");
-	karmaSlow                        = AutoExecConfig_CreateConVar("l4d2_karma_charge_slowspeed", "0.2", " How slow Time gets. Hardwired to minimum 0.03 or the server crashes", _, true, 0.03);
-	cvarisEnabled                    = AutoExecConfig_CreateConVar("l4d2_karma_charge_enabled", "1", " Turn Karma Charge on and off ");
-	cvarNoFallDamageOnCarry          = AutoExecConfig_CreateConVar("l4d2_karma_charge_no_fall_damage_on_carry", "1", "Fixes this by disabling fall damage when carried: https://streamable.com/xuipb6");
-	cvarNoFallDamageProtectFromIncap = AutoExecConfig_CreateConVar("l4d2_karma_charge_no_fall_damage_protect_from_incap", "1", "If you take more than 224 points of damage while incapacitated, you die.");
-	cvarModeSwitch                   = AutoExecConfig_CreateConVar("l4d2_karma_charge_slowmode", "0", " 0 - Entire Server gets slowed, 1 - Only Charger and Survivor do", _, true, 0.0, true, 1.0);
-	cvarCooldown                     = AutoExecConfig_CreateConVar("l4d2_karma_charge_cooldown", "0.0", "If slowmode is 0, how long does it take for the next karma to freeze the entire map. Begins counting from the end of the previous freeze");
+	karmaBirdCharge                  = AutoExecConfig_CreateConVar("l4d2_karma_kill_bird", "1", "Whether or not to enable bird charges, which are unlethal height charges.");
+	karmaSlowTimeOnServer            = AutoExecConfig_CreateConVar("l4d2_karma_kill_slowtime_on_server", "5.0", " How long does Time get slowed for the server");
+	karmaSlowTimeOnCouple            = AutoExecConfig_CreateConVar("l4d2_karma_kill_slowtime_on_couple", "3.0", " How long does Time get slowed for the karma couple");
+	karmaSlow                        = AutoExecConfig_CreateConVar("l4d2_karma_kill_slowspeed", "0.2", " How slow Time gets. Hardwired to minimum 0.03 or the server crashes", _, true, 0.03);
+	cvarisEnabled                    = AutoExecConfig_CreateConVar("l4d2_karma_kill_enabled", "1", " Turn Karma Kills on and off ");
+	cvarNoFallDamageOnCarry          = AutoExecConfig_CreateConVar("l4d2_karma_kill_no_fall_damage_on_carry", "1", "Fixes this by disabling fall damage when carried: https://streamable.com/xuipb6");
+	cvarNoFallDamageProtectFromIncap = AutoExecConfig_CreateConVar("l4d2_karma_kill_no_fall_damage_protect_from_incap", "1", "If you take more than 224 points of damage while incapacitated, you die.");
+	cvarModeSwitch                   = AutoExecConfig_CreateConVar("l4d2_karma_kill_slowmode", "0", " 0 - Entire Server gets slowed, 1 - Only Charger and Survivor do", _, true, 0.0, true, 1.0);
+	cvarCooldown                     = AutoExecConfig_CreateConVar("l4d2_karma_kill_cooldown", "0.0", "If slowmode is 0, how long does it take for the next karma to freeze the entire map. Begins counting from the end of the previous freeze");
 
 	cvarFatalFallDamage = FindConVar("survivor_incap_max_fall_damage");
 
@@ -960,13 +963,20 @@ public Action event_playerDeathPre(Handle event, const char[] name, bool dontBro
 
 			if (memoryLastKarma > 0 && GetConVarBool(karmaAwardConfirmed))
 			{
+				int damageReward = GetConVarInt(karmaDamageAwardConfirmed);
+
+				if (damageReward > 0)
+				{
+					SetEntProp(memoryLastKarma, Prop_Send, "m_missionSurvivorDamage", GetEntProp(memoryLastKarma, Prop_Send, "m_missionSurvivorDamage") + damageReward);
+					SetEntProp(memoryLastKarma, Prop_Send, "m_checkpointSurvivorDamage", GetEntProp(memoryLastKarma, Prop_Send, "m_checkpointSurvivorDamage") + damageReward);
+					L4D2Direct_SetTankTickets(memoryLastKarma, L4D2Direct_GetTankTickets(memoryLastKarma) + damageReward);
+				}
+
 				SetEventInt(event, "attacker", GetClientUserId(memoryLastKarma));
 				SetEventInt(event, "attackerentid", memoryLastKarma);
 				SetEventInt(event, "headshot", 2);
 				return Plugin_Changed;
 			}
-
-			return Plugin_Continue;
 		}
 	}
 
@@ -1460,12 +1470,37 @@ public Action event_PlayerJump(Handle event, const char[] name, bool dontBroadca
 	return Plugin_Continue;
 }
 
+public Action event_ChargerKill(Handle event, const char[] name, bool dontBroadcast)
+{
+	int client = GetClientOfUserId(GetEventInt(event, "userid"));
+
+	if (!isEnabled
+	    || client == 0)
+	{
+		return Plugin_Continue;
+	}
+
+	else if (GetConVarInt(karmaDamageAwardConfirmed) < 0)
+		return Plugin_Continue;
+
+	int maxDamage = GetConVarInt(FindConVar("z_max_survivor_damage"));
+
+	// Valve limits.
+	if (maxDamage > 300)
+		maxDamage = 300;
+
+	SetEntProp(client, Prop_Send, "m_missionSurvivorDamage", GetEntProp(client, Prop_Send, "m_missionSurvivorDamage") - maxDamage);
+	SetEntProp(client, Prop_Send, "m_checkpointSurvivorDamage", GetEntProp(client, Prop_Send, "m_checkpointSurvivorDamage") - maxDamage);
+	L4D2Direct_SetTankTickets(client, L4D2Direct_GetTankTickets(client) - maxDamage);
+
+	return Plugin_Continue;
+}
+
 public Action event_ChargerGrab(Handle event, const char[] name, bool dontBroadcast)
 {
 	int client = GetClientOfUserId(GetEventInt(event, "userid"));
 	if (!isEnabled
-	    || !client
-	    || !IsClientInGame(client))
+	    || client == 0)
 	{
 		return Plugin_Continue;
 	}
