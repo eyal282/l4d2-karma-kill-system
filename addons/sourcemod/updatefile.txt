@@ -2,10 +2,10 @@
 {
 	"Version"
 	{
-		"Latest"	"3.3"
+		"Latest"	"3.4"
 	}
 	
-	"Notes"	"Changed cvar names to fix confusions."
+	"Notes"	"Potential Crash fix. Bird Charge detection improved"
 }
 	
 "Files"
