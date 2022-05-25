@@ -15,7 +15,7 @@
 
 #define UPDATE_URL "https://raw.githubusercontent.com/eyal282/l4d2-karma-kill-system/master/addons/sourcemod/updatefile.txt"
 
-#define PLUGIN_VERSION "3.3"
+#define PLUGIN_VERSION "3.4"
 
 // TEST_DEBUG is always 1 if the server's name contains "Test Server"
 bool TEST_DEBUG = false;
@@ -98,7 +98,7 @@ enum struct enLastKarma
 	float lastPos[3];
 
 	// artistHealth is only for karma jumps. It is the health the player had prior to the jump.
-	// artistWeapons is only for karma jumps. It is the list of weapons the player had prior to the jump.
+	// artistWeapons is only for karma jumps. It is the list of weapon refs the player had prior to the jump.
 	// artistTimestamp is only for karma jumps, it is the timestamp
 	int   artistHealth[2];
 	int   artistWeapons[64];
@@ -110,7 +110,7 @@ enLastKarma LastKarma[MAXPLAYERS + 1][KarmaType_MAX];
 float preJumpHeight[MAXPLAYERS + 1];
 float apexHeight[MAXPLAYERS + 1];
 // Height at which we caught a survivor as charger
-// This is reduced by 1 for each frame the charger flying upwards ( jump )
+// This is set to current height whenever the charger is on the ground.
 float catchHeight[MAXPLAYERS + 1];
 
 Handle chargerTimer[MAXPLAYERS] = { INVALID_HANDLE, ... };
@@ -1077,7 +1077,7 @@ public void OnGameFrame()
 			if (GetEntityFlags(i) & FL_ONGROUND)
 			{
 				// Being on the ground reduces bird charge for slopes.
-				catchHeight[i] -= 3.0;
+				catchHeight[i] = fOrigin[2];
 
 				apexHeight[i]    = -65535.0;
 				preJumpHeight[i] = fOrigin[2];
@@ -1101,11 +1101,6 @@ public void OnGameFrame()
 			}
 			else
 			{
-				// Charger jumps also reduce bird charge for slopes.
-				if (fVelocity[2] >= 5.0)
-				{
-					catchHeight[i] -= 3.0;
-				}
 				if (fOrigin[2] > apexHeight[i])
 				{
 					apexHeight[i] = fOrigin[2];
@@ -2945,7 +2940,7 @@ stock void AttachKarmaToVictim(int victim, int attacker, int type, bool bLastPos
 
 			if (weapon != -1)
 			{
-				LastKarma[victim][type].artistWeapons[num++] = weapon;
+				LastKarma[victim][type].artistWeapons[num++] = EntIndexToEntRef(weapon);
 			}
 		}
 	}

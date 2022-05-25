@@ -3,7 +3,7 @@
 #pragma semicolon 1
 
 #define PLUGIN_AUTHOR  "RumbleFrog, SourceBans++ Dev Team, edit by Eyal282"
-#define PLUGIN_VERSION "1.3"
+#define PLUGIN_VERSION "1.4"
 
 #include <left4dhooks>
 #include <sourcemod>
@@ -94,9 +94,9 @@ public Action event_BotReplacesAPlayer(Handle event, const char[] name, bool don
 
 		for (int i = 0; i < 64; i++)
 		{
-			int weapon = g_iProperWeapons[oldPlayer][i];
+			int weapon = EntRefToEntIndex(g_iProperWeapons[oldPlayer][i]);
 
-			if (weapon != 0 && IsValidEntity(weapon))
+			if (weapon != INVALID_ENT_REFERENCE)
 			{
 				num++;
 			}
@@ -106,9 +106,9 @@ public Action event_BotReplacesAPlayer(Handle event, const char[] name, bool don
 
 		for (int i = 0; i < 64; i++)
 		{
-			int weapon = g_iProperWeapons[oldPlayer][i];
+			int weapon = EntRefToEntIndex(g_iProperWeapons[oldPlayer][i]);
 
-			if (weapon != 0 && IsValidEntity(weapon))
+			if (weapon != INVALID_ENT_REFERENCE)
 			{
 				WritePackCell(DP, weapon);
 			}
@@ -186,9 +186,9 @@ public void KarmaKillSystem_OnKarmaJumpPost(int victim, float lastPos[3], int ju
 
 				for (int i = 0; i < 64; i++)
 				{
-					int weapon = jumperWeapons[i];
+					int weapon = EntRefToEntIndex(jumperWeapons[i]);
 
-					if (weapon != 0 && IsValidEntity(weapon))
+					if (weapon != INVALID_ENT_REFERENCE)
 					{
 						num++;
 					}
@@ -198,9 +198,9 @@ public void KarmaKillSystem_OnKarmaJumpPost(int victim, float lastPos[3], int ju
 
 				for (int i = 0; i < 64; i++)
 				{
-					int weapon = jumperWeapons[i];
+					int weapon = EntRefToEntIndex(jumperWeapons[i]);
 
-					if (weapon != 0 && IsValidEntity(weapon))
+					if (weapon != INVALID_ENT_REFERENCE)
 					{
 						WritePackCell(DP, weapon);
 					}
@@ -268,9 +268,11 @@ public void Frame_Respawn(Handle DP)
 
 	for (int i = 0; i < num; i++)
 	{
-		if (IsValidEntity(weapons[i]))
+		int weapon = EntRefToEntIndex(weapons[i]);
+
+		if (weapon != INVALID_ENT_REFERENCE)
 		{
-			EquipPlayerWeapon(victim, weapons[i]);
+			EquipPlayerWeapon(victim, weapon);
 		}
 	}
 }
