@@ -15,7 +15,7 @@
 
 #define UPDATE_URL "https://raw.githubusercontent.com/eyal282/l4d2-karma-kill-system/master/addons/sourcemod/updatefile.txt"
 
-#define PLUGIN_VERSION "3.4"
+#define PLUGIN_VERSION "3.5"
 
 // TEST_DEBUG is always 1 if the server's name contains "Test Server"
 bool TEST_DEBUG = false;
@@ -85,7 +85,6 @@ char karmaNames[KarmaType_MAX][] = {
 	"Jump",
 };
 
-// Todo: add artistTimestamp to detect the moment of jump.
 // I'll probably eventually add a logger for karma jumps and add "lastDistance" to this enum struct that dictates the closest special infected if maybe something messed up.
 enum struct enLastKarma
 {
@@ -159,10 +158,42 @@ public void fuckZones_OnStartTouchZone_Post(int client, int entity, const char[]
 
 void OnCheckKarmaZoneTouch(int victim, int entity, const char[] zone_name, int pinner = 0)
 {
-	if (StrContains(zone_name, "KarmaKill", false) == -1)
+	if (!IsPlayerAlive(victim) || L4D_IsPlayerGhost(victim))
 		return;
 
-	else if (!IsPlayerAlive(victim) || L4D_IsPlayerGhost(victim))
+	// This is for bad out of bounds areas that we don't want to exist.
+	if (StrContains(zone_name, "ForcePummel", false) != -1)
+	{
+		L4DTeam team = L4D_GetClientTeam(victim);
+
+		if (team == L4DTeam_Infected)
+		{
+			if (L4D2_GetPlayerZombieClass(victim) == L4D2ZombieClass_Charger)
+			{
+				int trueVictim = L4D_GetVictimCarry(victim);
+
+				if (trueVictim != 0)
+				{
+					int ability = L4D_GetPlayerCustomAbility(victim);
+
+					if (ability != -1)
+					{
+						// Make game think we're on ground because you don't pummel mid-air.
+						SetEntityFlags(victim, GetEntityFlags(victim) | FL_ONGROUND);
+
+						// Set time at which we started charging to the beginning of the map, usually over 100 seconds.
+						SetEntPropFloat(ability, Prop_Send, "m_chargeStartTime", 0.0);
+
+						SetEntityFlags(victim, GetEntityFlags(victim) | FL_ONGROUND);
+
+						TeleportEntity(victim, NULL_VECTOR, NULL_VECTOR, view_as<float>({ 0.0, 0.0, 0.0 }));
+					}
+				}
+			}
+		}
+	}
+
+	if (StrContains(zone_name, "KarmaKill", false) == -1)
 		return;
 
 	L4DTeam team = L4D_GetClientTeam(victim);
@@ -348,7 +379,7 @@ forward void KarmaKillSystem_OnKarmaEventPost(int victim, int attacker, const ch
  *
  * @param victim             Player who got killed by the karma jump. This can be anybody. Useful to revive the victim.
  * @param lastPos            Origin from which the jump began.
- * @param jumperWeapons		 Weapons of the jumper at the moment of the jump.
+ * @param jumperWeapons		 Weapon Refs of the jumper at the moment of the jump. Every invalid slot is -1
  * @param jumperHealth    	 jumperHealth[0] and jumperHealth[1] = Health and Temp health from which the jump began.
  * @param jumperTimestamp    Timestamp from which the jump began.
  * @param jumperSteamId      jumper's Steam ID.
@@ -2933,6 +2964,11 @@ stock void AttachKarmaToVictim(int victim, int attacker, int type, bool bLastPos
 		LastKarma[victim][type].artistHealth[1] = L4D_GetPlayerTempHealth(victim);
 
 		int num = 0;
+
+		for (int i = 0; i < sizeof(enLastKarma::artistWeapons); i++)
+		{
+			LastKarma[victim][type].artistWeapons[i] = -1;
+		}
 
 		for (int i = 0; i < GetEntPropArraySize(victim, Prop_Send, "m_hMyWeapons"); i++)
 		{

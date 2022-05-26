@@ -3,7 +3,7 @@
 #pragma semicolon 1
 
 #define PLUGIN_AUTHOR  "RumbleFrog, SourceBans++ Dev Team, edit by Eyal282"
-#define PLUGIN_VERSION "1.4"
+#define PLUGIN_VERSION "1.5"
 
 #include <left4dhooks>
 #include <sourcemod>
@@ -133,7 +133,7 @@ public Action event_PlayerReplacesABot(Handle event, const char[] name, bool don
  *
  * @param victim             Player who got killed by the karma jump. This can be anybody. Useful to revive the victim.
  * @param lastPos            Origin from which the jump began.
- * @param jumperWeapons		 Weapons of the jumper at the moment of the jump.
+ * @param jumperWeapons		 Weapon Refs of the jumper at the moment of the jump. Every invalid slot is -1
  * @param jumperHealth    	 jumperHealth[0] and jumperHealth[1] = Health and Temp health from which the jump began.
  * @param jumperTimestamp    Timestamp from which the jump began.
  * @param jumperSteamId      jumper's Steam ID.
@@ -246,7 +246,7 @@ public void Frame_Respawn(Handle DP)
 
 	int num = ReadPackCell(DP);
 
-	int weapons[64];
+	int weapons[64] = { -1, ... };
 
 	for (int i = 0; i < num; i++)
 	{

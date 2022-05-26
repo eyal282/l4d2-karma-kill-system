@@ -83,7 +83,7 @@ public void OnConfigsExecuted()
  *
  * @param victim             Player who got killed by the karma jump. This can be anybody. Useful to revive the victim.
  * @param lastPos            Origin from which the jump began.
- * @param jumperWeapons		 Weapons of the jumper at the moment of the jump.
+ * @param jumperWeapons		 Weapon Refs of the jumper at the moment of the jump. Every invalid slot is -1
  * @param jumperHealth    	 jumperHealth[0] and jumperHealth[1] = Health and Temp health from which the jump began.
  * @param jumperTimestamp    Timestamp from which the jump began.
  * @param jumperSteamId      jumper's Steam ID.
