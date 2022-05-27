@@ -15,7 +15,7 @@
 
 #define UPDATE_URL "https://raw.githubusercontent.com/eyal282/l4d2-karma-kill-system/master/addons/sourcemod/updatefile.txt"
 
-#define PLUGIN_VERSION "3.5"
+#define PLUGIN_VERSION "3.6"
 
 // TEST_DEBUG is always 1 if the server's name contains "Test Server"
 bool TEST_DEBUG = false;
@@ -26,7 +26,8 @@ static const float NO_MERCY_DEBUG_ORIGIN[] = { 7547.976563, 3661.247803, 78.0312
 // All of these must be 0.1 * n, basically 0.1, 0.2, 0.3, 0.4...
 // All of these are seconds after you reach the height you jumped from.
 
-bool g_bMapStarted = false;
+bool g_bMapStarted   = false;
+bool g_bRoundStarted = false;
 
 float JOCKEY_JUMP_SECONDS_NEEDED_AGAINST_LEDGE_HANG_PER_FORCE = 0.3;
 float IMPACT_SECONDS_NEEDED_AGAINST_LEDGE_HANG                = 0.3;
@@ -1017,6 +1018,9 @@ public Action event_playerDeathPre(Handle event, const char[] name, bool dontBro
 public Action event_RoundStart(Handle event, const char[] name, bool dontBroadcast)
 {
 	// SlowTime creates an entity, and round_start can be called before a map starts ( and before entities can be created )
+
+	g_bRoundStarted = true;
+
 	if (g_bMapStarted)
 		SlowTime("0.0", "0.0", "0.0", 0.0, 1.0);
 
@@ -1025,6 +1029,8 @@ public Action event_RoundStart(Handle event, const char[] name, bool dontBroadca
 
 public Action event_RoundEnd(Handle event, const char[] name, bool dontBroadcast)
 {
+	g_bRoundStarted = false;
+
 	// Because round_start has bugs when calling on first chapters.
 	SlowTime("0.0", "0.0", "0.0", 0.0, 1.0);
 
@@ -2165,13 +2171,14 @@ stock void SlowTime(const char[] re_Acceleration = "2.0", const char[] minBlendR
 
 	DispatchSpawn(ent);
 
-	if (fSlowPower == 1.0)
+	if (fSlowPower == 1.0 || !g_bRoundStarted)
 	{
 		int theWorldEnt = -1;
 
 		while ((theWorldEnt = FindEntityByTargetname(theWorldEnt, "THE WORLD", true, false)) != -1)
 		{
 			AcceptEntityInput(theWorldEnt, "Stop");
+			AcceptEntityInput(theWorldEnt, "Reset");
 
 			// Must compensate for the timescale making every single timer slower, both CreateTimer type timers and OnUser1 type timers
 			FormatEx(sAddOutput, sizeof(sAddOutput), "OnUser2 !self:Kill::3.0:1");
