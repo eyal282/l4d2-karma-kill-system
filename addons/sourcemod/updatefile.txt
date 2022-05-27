@@ -2,7 +2,7 @@
 {
 	"Version"
 	{
-		"Latest"	"3.6"
+		"Latest"	"3.7"
 	}
 	
 	"Notes"	"Major bugfix for server freeze on karma"
