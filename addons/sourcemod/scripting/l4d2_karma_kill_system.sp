@@ -15,7 +15,7 @@
 
 #define UPDATE_URL "https://raw.githubusercontent.com/eyal282/l4d2-karma-kill-system/master/addons/sourcemod/updatefile.txt"
 
-#define PLUGIN_VERSION "3.6"
+#define PLUGIN_VERSION "3.7"
 
 // TEST_DEBUG is always 1 if the server's name contains "Test Server"
 bool TEST_DEBUG = false;
@@ -300,6 +300,7 @@ public void OnPluginStart()
 	HookEvent("charger_impact", event_ChargerImpact, EventHookMode_Post);
 	HookEvent("player_ledge_grab", Event_PlayerLedgeGrab, EventHookMode_Post);
 	HookEvent("player_death", event_playerDeathPre, EventHookMode_Pre);
+	HookEvent("round_start_post_nav", event_RoundStartPostNav, EventHookMode_Post);
 	HookEvent("round_start", event_RoundStart, EventHookMode_Post);
 	HookEvent("round_end", event_RoundEnd, EventHookMode_Post);
 
@@ -350,6 +351,8 @@ public void OnPluginStart()
 		Updater_AddPlugin(UPDATE_URL);
 	}
 #endif
+
+	g_bRoundStarted = L4D_HasAnySurvivorLeftSafeAreaStock();
 }
 
 /**
@@ -1016,6 +1019,16 @@ public Action event_playerDeathPre(Handle event, const char[] name, bool dontBro
 }
 
 public Action event_RoundStart(Handle event, const char[] name, bool dontBroadcast)
+{
+	// SlowTime creates an entity, and round_start can be called before a map starts ( and before entities can be created )
+
+	if (g_bMapStarted)
+		SlowTime("0.0", "0.0", "0.0", 0.0, 1.0);
+
+	return Plugin_Continue;
+}
+
+public Action event_RoundStartPostNav(Handle event, const char[] name, bool dontBroadcast)
 {
 	// SlowTime creates an entity, and round_start can be called before a map starts ( and before entities can be created )
 
