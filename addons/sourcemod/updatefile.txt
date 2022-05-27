@@ -2,10 +2,10 @@
 {
 	"Version"
 	{
-		"Latest"	"3.5"
+		"Latest"	"3.6"
 	}
 	
-	"Notes"	"Error log fix and ForcePummel zones enabled."
+	"Notes"	"Major bugfix for server freeze on karma"
 }
 	
 "Files"
