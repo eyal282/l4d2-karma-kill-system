@@ -15,7 +15,7 @@
 
 #define UPDATE_URL "https://raw.githubusercontent.com/eyal282/l4d2-karma-kill-system/master/addons/sourcemod/updatefile.txt"
 
-#define PLUGIN_VERSION "3.7"
+#define PLUGIN_VERSION "3.8"
 
 // TEST_DEBUG is always 1 if the server's name contains "Test Server"
 bool TEST_DEBUG = false;
@@ -254,16 +254,33 @@ void OnCheckKarmaZoneTouch(int victim, int entity, const char[] zone_name, int p
 			TeleportEntity(victim, fPinnerOrigin, NULL_VECTOR, NULL_VECTOR);
 		}
 
+		// Enable ability to register karma kills by simulating fall damage
+		if (AllKarmaRegisterTimer[victim] != INVALID_HANDLE)
+		{
+			CloseHandle(AllKarmaRegisterTimer[victim]);
+			AllKarmaRegisterTimer[victim] = INVALID_HANDLE;
+		}
+
+		AllKarmaRegisterTimer[victim] = CreateTimer(3.0, RegisterAllKarmaDelay, victim);
+
 		// Makes body undefibable.
 		SetEntProp(victim, Prop_Send, "m_isFallingFromLedge", true);
 
-		ForcePlayerSuicide(victim);
+		// Incap & kill, this should not trigger the SDKHook_OnTakeDamage
+		SDKHooks_TakeDamage(victim, victim, victim, 10000.0, DMG_FALL);
+		SDKHooks_TakeDamage(victim, victim, victim, 10000.0, DMG_FALL);
 
-		int type;
-		int lastKarma = GetAnyLastKarma(victim, type);
+		// Safety measures.
+		if (IsPlayerAlive(victim))
+		{
+			ForcePlayerSuicide(victim);
 
-		if (lastKarma != 0)
-			AnnounceKarma(lastKarma, victim, type, false, true);
+			int type;
+			int lastKarma = GetAnyLastKarma(victim, type);
+
+			if (lastKarma != 0)
+				AnnounceKarma(lastKarma, victim, type, false, true);
+		}
 	}
 }
 
