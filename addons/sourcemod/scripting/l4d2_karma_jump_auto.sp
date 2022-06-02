@@ -3,7 +3,7 @@
 #pragma semicolon 1
 
 #define PLUGIN_AUTHOR  "RumbleFrog, SourceBans++ Dev Team, edit by Eyal282"
-#define PLUGIN_VERSION "1.5"
+#define PLUGIN_VERSION "1.6"
 
 #include <left4dhooks>
 #include <sourcemod>
@@ -220,7 +220,7 @@ public void KarmaKillSystem_OnKarmaJumpPost(int victim, float lastPos[3], int ju
 				KickClient(insect, sBanMessage);
 		}
 
-		ServerCommand("sm_addban %i \"%s\" Karma Jump detected %.2f seconds after login.", GetConVarInt(Convar_AutoBanTime), jumperSteamId, GetGameTime() - fLastLogin);
+		ServerCommand("sm_addban %i \"%s\" Karma Jump detected %.2f seconds after login.", GetConVarInt(Convar_AutoBanTime), jumperSteamId, jumperTimestamp - fLastLogin);
 
 		char sPrefix[64];
 		GetKarmaPrefix(sPrefix, sizeof(sPrefix));
