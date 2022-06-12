@@ -1,4 +1,3 @@
-
 #pragma semicolon 1
 
 #define PLUGIN_AUTHOR  "RumbleFrog, SourceBans++ Dev Team, edit by Eyal282"
@@ -22,6 +21,7 @@ ConVar Convar_WebHook;
 ConVar Convar_BotName;
 ConVar Convar_BotImage;
 ConVar Convar_BotMessage;
+ConVar ConVar_Enable;
 
 public Plugin myinfo =
 {
@@ -49,6 +49,7 @@ public void OnAllPluginsLoaded()
 	Convar_BotName    = UC_CreateConVar("l4d2_karma_jump_discord_name", "Karma Jump", "Discord bot name for webhook", FCVAR_PROTECTED);
 	Convar_BotImage   = UC_CreateConVar("l4d2_karma_jump_discord_image", "https://wallpapercave.com/wp/AKsyaeQ.jpg", "Discord bot image URL for webhook.", FCVAR_PROTECTED);
 	Convar_BotMessage = UC_CreateConVar("l4d2_karma_jump_discord_message", "<@&744025231521218600>", "Discord message to be sent ( usually mention ).", FCVAR_PROTECTED);
+	ConVar_Enable     = UC_CreateConVar("l4d2_karma_jump_discord_enable", "1", "Enable logging? 1=Enable  0=Disable", FCVAR_PROTECTED);
 
 #if defined _autoexecconfig_included
 
@@ -99,6 +100,9 @@ public void KarmaKillSystem_OnKarmaJumpPost(int victim, float lastPos[3], int ju
 
 void Jump_SendReport(const char[] AuthId, const char[] Name)
 {
+	if (!GetConVarBool(ConVar_Enable))
+		return;
+	
 	char sBotWebHook[512], sBotName[64], sBotImage[256], sBotMessage[256];
 
 	Convar_WebHook.GetString(sBotWebHook, sizeof(sBotWebHook));
