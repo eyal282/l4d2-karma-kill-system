@@ -2,10 +2,10 @@
 {
 	"Version"
 	{
-		"Latest"	"3.9"
+		"Latest"	"4.0"
 	}
 	
-	"Notes"	"Proper awards for making a karma kill in a karma zone."
+	"Notes"	"Cvar to disable reports on specific maps ( Glubtastic!!! )."
 }
 	
 "Files"
