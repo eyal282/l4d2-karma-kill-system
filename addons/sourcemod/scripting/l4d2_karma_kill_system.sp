@@ -13,9 +13,10 @@
 #pragma newdecls required
 #pragma semicolon 1
 
-#define UPDATE_URL "https://raw.githubusercontent.com/eyal282/l4d2-karma-kill-system/master/addons/sourcemod/updatefile.txt"
+#define UPDATE_URL      "https://raw.githubusercontent.com/eyal282/l4d2-karma-kill-system/master/addons/sourcemod/updatefile.txt"
+#define L4DH_UPDATE_URL "https://raw.githubusercontent.com/SilvDev/Left4DHooks/main/sourcemod/updater.txt"
 
-#define PLUGIN_VERSION "3.8"
+#define PLUGIN_VERSION "3.9"
 
 // TEST_DEBUG is always 1 if the server's name contains "Test Server"
 bool TEST_DEBUG = false;
@@ -366,6 +367,7 @@ public void OnPluginStart()
 	if (LibraryExists("updater"))
 	{
 		Updater_AddPlugin(UPDATE_URL);
+		Updater_AddPlugin(L4DH_UPDATE_URL);
 	}
 #endif
 
@@ -529,6 +531,7 @@ public void OnLibraryAdded(const char[] name)
 #if defined _updater_included
 	if (StrEqual(name, "updater"))
 	{
+		Updater_AddPlugin(L4DH_UPDATE_URL);
 		Updater_AddPlugin(UPDATE_URL);
 	}
 #endif
@@ -649,7 +652,7 @@ public void L4D2_OnStagger_Post(int victim, int attacker)
 	return;
 }
 
-public void L4D2_OnPlayerFling_Post(int victim, int attacker, float vecDir[3])
+public void L4D2_OnPlayerFling_Post(int victim, int attacker, const float vecDir[3])
 {
 	if (victim < 1 || victim > MaxClients || attacker < 1 || attacker > MaxClients)
 		return;
@@ -2079,21 +2082,7 @@ void AnnounceKarma(int client, int victim, int type, bool bBird, bool bKillConfi
 	}
 
 	// Major changes might make this unnecessary anymore.
-	/*
-	// Prevent jockey and charger bug where both are attached, and both make a karma...
-	if (client > 0 && GetEntPropEnt(client, Prop_Send, "m_carryVictim") == victim)
-	{
-	    int Jockey = GetEntPropEnt(victim, Prop_Send, "m_jockeyAttacker");
 
-	    if (Jockey != -1)
-	    {
-	        SetEntPropEnt(Jockey, Prop_Send, "m_jockeyVictim", -1);
-	        SetEntPropEnt(victim, Prop_Send, "m_jockeyAttacker", -1);
-
-	        DettachKarmaFromVictim(victim, KT_Jockey);
-	    }
-	}
-	*/
 	if (!bKillConfirmed)
 	{
 		// Ensuring the bKillConfirmed karma event will fire by removing unrelated karma artists.
@@ -2630,9 +2619,6 @@ stock void ClearAllPinners(int victim)
 		if (GetEntPropEnt(i, Prop_Send, "m_tongueVictim") == victim)
 			SetEntPropEnt(i, Prop_Send, "m_tongueVictim", -1);
 
-		if (GetEntPropEnt(i, Prop_Send, "m_jockeyVictim") == victim)
-			SetEntPropEnt(i, Prop_Send, "m_jockeyVictim", -1);
-
 		if (GetEntPropEnt(i, Prop_Send, "m_pummelVictim") == victim)
 			SetEntPropEnt(i, Prop_Send, "m_pummelVictim", -1);
 
@@ -2642,9 +2628,13 @@ stock void ClearAllPinners(int victim)
 
 	SetEntPropEnt(victim, Prop_Send, "m_pounceAttacker", -1);
 	SetEntPropEnt(victim, Prop_Send, "m_tongueOwner", -1);
-	SetEntPropEnt(victim, Prop_Send, "m_jockeyAttacker", -1);
 	SetEntPropEnt(victim, Prop_Send, "m_pummelAttacker", -1);
 	SetEntPropEnt(victim, Prop_Send, "m_carryAttacker", -1);
+
+	if (GetEntPropEnt(victim, Prop_Send, "m_jockeyAttacker") != -1)
+	{
+		L4D2_Jockey_EndRide(victim, GetEntPropEnt(victim, Prop_Send, "m_jockeyAttacker"));
+	}
 
 	// Detach from chargers.
 	AcceptEntityInput(victim, "ClearParent");
