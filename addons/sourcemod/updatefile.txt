@@ -2,10 +2,10 @@
 {
 	"Version"
 	{
-		"Latest"	"4.0"
+		"Latest"	"3.9"
 	}
 	
-	"Notes"	"Cvar to disable reports on specific maps ( Glubtastic!!! )."
+	"Notes"	"Theoretical bug fix for jockey bug."
 }
 	
 "Files"
