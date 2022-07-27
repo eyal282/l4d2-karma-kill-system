@@ -2,7 +2,7 @@
 {
 	"Version"
 	{
-		"Latest"	"3.9"
+		"Latest"	"4.0"
 	}
 	
 	"Notes"	"Theoretical bug fix for jockey bug."
