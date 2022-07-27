@@ -5,7 +5,7 @@
 		"Latest"	"4.0"
 	}
 	
-	"Notes"	"Theoretical bug fix for jockey bug."
+	"Notes"	"Added ConVar to allow karma victims being defibrillated"
 }
 	
 "Files"
