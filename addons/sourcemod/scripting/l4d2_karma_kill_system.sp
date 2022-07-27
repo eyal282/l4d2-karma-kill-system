@@ -514,6 +514,11 @@ public Action SDKEvent_OnTakeDamage(int victim, int& attacker, int& inflictor, f
 
 		RegisterCaptor(victim);
 
+		if (GetConVarBool(cvarAllowDefib))
+		{
+			SetEntProp(victim, Prop_Send, "m_isFallingFromLedge", false);
+		}
+
 		if (GetConVarBool(cvarNoFallDamageOnCarry) && L4D_GetAttackerCarry(victim) != 0)
 		{
 			damage = 0.0;
