@@ -16,7 +16,7 @@
 #define UPDATE_URL      "https://raw.githubusercontent.com/eyal282/l4d2-karma-kill-system/master/addons/sourcemod/updatefile.txt"
 #define L4DH_UPDATE_URL "https://raw.githubusercontent.com/SilvDev/Left4DHooks/main/sourcemod/updater.txt"
 
-#define PLUGIN_VERSION "3.9"
+#define PLUGIN_VERSION "4.0"
 
 // TEST_DEBUG is always 1 if the server's name contains "Test Server"
 bool TEST_DEBUG = false;
@@ -56,6 +56,7 @@ Handle karmaSlowTimeOnCouple     = INVALID_HANDLE;
 Handle karmaSlow                 = INVALID_HANDLE;
 Handle cvarModeSwitch            = INVALID_HANDLE;
 Handle cvarCooldown              = INVALID_HANDLE;
+Handle cvarAllowDefib            = INVALID_HANDLE;
 
 Handle cvarFatalFallDamage = INVALID_HANDLE;
 bool   isEnabled           = true;
@@ -264,8 +265,11 @@ void OnCheckKarmaZoneTouch(int victim, int entity, const char[] zone_name, int p
 
 		AllKarmaRegisterTimer[victim] = CreateTimer(3.0, RegisterAllKarmaDelay, victim);
 
-		// Makes body undefibable.
-		SetEntProp(victim, Prop_Send, "m_isFallingFromLedge", true);
+		if (!GetConVarBool(cvarAllowDefib))
+		{
+			// Makes body undefibable.
+			SetEntProp(victim, Prop_Send, "m_isFallingFromLedge", true);
+		}
 
 		// Incap & kill, this should not trigger the SDKHook_OnTakeDamage
 		SDKHooks_TakeDamage(victim, victim, victim, 10000.0, DMG_FALL);
@@ -340,6 +344,7 @@ public void OnPluginStart()
 	cvarNoFallDamageProtectFromIncap = AutoExecConfig_CreateConVar("l4d2_karma_kill_no_fall_damage_protect_from_incap", "1", "If you take more than 224 points of damage while incapacitated, you die.");
 	cvarModeSwitch                   = AutoExecConfig_CreateConVar("l4d2_karma_kill_slowmode", "0", " 0 - Entire Server gets slowed, 1 - Only Charger and Survivor do", _, true, 0.0, true, 1.0);
 	cvarCooldown                     = AutoExecConfig_CreateConVar("l4d2_karma_kill_cooldown", "0.0", "If slowmode is 0, how long does it take for the next karma to freeze the entire map. Begins counting from the end of the previous freeze");
+	cvarAllowDefib                   = AutoExecConfig_CreateConVar("l4d2_karma_kill_allow_defib", "0", " Allow karma victims to be revived with defibrillator? 0 - No, 1 - Yes.", _, true, 0.0, true, 1.0);
 
 	cvarFatalFallDamage = FindConVar("survivor_incap_max_fall_damage");
 
