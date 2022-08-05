@@ -2,10 +2,10 @@
 {
 	"Version"
 	{
-		"Latest"	"4.0"
+		"Latest"	"4.1"
 	}
 	
-	"Notes"	"Added ConVar to allow karma victims being defibrillated"
+	"Notes"	"Added option to grant ban-immunity to players with admin flags (configurable with a ConVar)"
 }
 	
 "Files"
