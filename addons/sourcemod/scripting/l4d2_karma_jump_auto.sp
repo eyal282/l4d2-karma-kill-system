@@ -3,7 +3,7 @@
 #pragma semicolon 1
 
 #define PLUGIN_AUTHOR  "RumbleFrog, SourceBans++ Dev Team, edit by Eyal282"
-#define PLUGIN_VERSION "1.6"
+#define PLUGIN_VERSION "1.7"
 
 #include <left4dhooks>
 #include <sourcemod>
@@ -18,6 +18,7 @@ ConVar Convar_AutoRevive;
 ConVar Convar_AutoBanTime;
 ConVar Convar_AutoBanPlayTime;
 ConVar Convar_AutoBanMessage;
+ConVar Convar_AdminFlags;
 
 StringMap g_smLogins;
 
@@ -25,6 +26,8 @@ bool  g_bCheckTakeover[MAXPLAYERS + 1];
 float g_fProperOrigin[MAXPLAYERS + 1][3];
 int   g_iProperWeapons[MAXPLAYERS + 1][64];
 int   g_iProperHealth[MAXPLAYERS + 1][2];
+
+bool bIsAdmin[MAXPLAYERS+1] = {false};
 
 public Plugin myinfo =
 {
@@ -62,6 +65,7 @@ public void OnAllPluginsLoaded()
 	Convar_AutoBanTime     = UC_CreateConVar("l4d2_karma_jump_auto_ban", "10080", "Time to ban the jumping player, set to negative to disable.", FCVAR_PROTECTED);
 	Convar_AutoBanPlayTime = UC_CreateConVar("l4d2_karma_jump_auto_playtime", "30", "Ban only if karma jump is playing for less than this amount of time.", FCVAR_PROTECTED);
 	Convar_AutoBanMessage  = UC_CreateConVar("l4d2_karma_jump_auto_banmessage", "It appears that you're getting checkmated", "Message to display to banned player", FCVAR_PROTECTED);
+	Convar_AdminFlags      = UC_CreateConVar("l4d2_karma_jump_auto_immunity_flags", "", "Admin flags required for ban immunity. Leave empty to disable immunity.", FCVAR_PROTECTED);
 
 #if defined _autoexecconfig_included
 
@@ -70,6 +74,21 @@ public void OnAllPluginsLoaded()
 	AutoExecConfig_CleanFile();
 
 #endif
+}
+
+public void OnClientPostAdminCheck(int client)
+{
+	IsAdmin(client);
+}
+
+void IsAdmin(int client)
+{
+	char s_flags[32];
+	GetConVarString(Convar_AdminFlags, s_flags, sizeof(s_flags));
+	if (GetUserFlagBits(client) & ReadFlagString(s_flags) || GetUserFlagBits(client) & ADMFLAG_ROOT)
+		bIsAdmin[client] = true;
+	else
+		bIsAdmin[client] = false;
 }
 
 public Action event_BotReplacesAPlayer(Handle event, const char[] name, bool dontBroadcast)
@@ -116,6 +135,7 @@ public Action event_BotReplacesAPlayer(Handle event, const char[] name, bool don
 
 		Frame_Respawn(DP);
 	}
+	return Plugin_Continue;
 }
 
 public Action event_PlayerReplacesABot(Handle event, const char[] name, bool dontBroadcast)
@@ -126,6 +146,7 @@ public Action event_PlayerReplacesABot(Handle event, const char[] name, bool don
 	GetClientAuthId(newPlayer, AuthId_Steam2, sAuthId, sizeof(sAuthId));
 
 	g_smLogins.SetValue(sAuthId, GetGameTime());
+	return Plugin_Continue;
 }
 
 /**
@@ -145,6 +166,11 @@ public Action event_PlayerReplacesABot(Handle event, const char[] name, bool don
 public void KarmaKillSystem_OnKarmaJumpPost(int victim, float lastPos[3], int jumperWeapons[64], int jumperHealth[2], float jumperTimestamp, char[] jumperSteamId, char[] jumperName)
 {
 	if (GetConVarInt(Convar_AutoBanTime) < 0)
+		return;
+
+	char s_flags[32];
+	GetConVarString(Convar_AdminFlags, s_flags, sizeof(s_flags));
+	if (bIsAdmin[victim] && s_flags[0] != '\0' )
 		return;
 
 	char sBanMessage[128];
