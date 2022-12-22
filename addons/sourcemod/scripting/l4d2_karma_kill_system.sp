@@ -16,7 +16,7 @@
 #define UPDATE_URL      "https://raw.githubusercontent.com/eyal282/l4d2-karma-kill-system/master/addons/sourcemod/updatefile.txt"
 #define L4DH_UPDATE_URL "https://raw.githubusercontent.com/SilvDev/Left4DHooks/main/sourcemod/updater.txt"
 
-#define PLUGIN_VERSION "4.1"
+#define PLUGIN_VERSION "4.3"
 
 // TEST_DEBUG is always 1 if the server's name contains "Test Server"
 bool TEST_DEBUG = false;
@@ -209,7 +209,11 @@ void OnCheckKarmaZoneTouch(int victim, int entity, const char[] zone_name, int p
 
 		if (trueVictim != 0)
 		{
-			OnCheckKarmaZoneTouch(trueVictim, entity, zone_name, victim);
+			// Thanks for Haigen, smokers can be in karma zone while the victim is not, must wait for survivors to trip that alarm.
+			if(L4D2_GetPlayerZombieClass(victim) != L4D2ZombieClass_Smoker)
+			{
+				OnCheckKarmaZoneTouch(trueVictim, entity, zone_name, victim);
+			}
 
 			if (!IsPlayerAlive(trueVictim))
 				CreateTimer(0.1, Timer_ResetAbility, GetClientUserId(victim), TIMER_FLAG_NO_MAPCHANGE);

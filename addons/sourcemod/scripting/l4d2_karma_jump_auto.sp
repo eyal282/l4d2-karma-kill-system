@@ -26,6 +26,7 @@ bool  g_bCheckTakeover[MAXPLAYERS + 1];
 float g_fProperOrigin[MAXPLAYERS + 1][3];
 int   g_iProperWeapons[MAXPLAYERS + 1][64];
 int   g_iProperHealth[MAXPLAYERS + 1][2];
+bool  g_bFirstTimeSpawned[MAXPLAYERS + 1];
 
 bool bIsAdmin[MAXPLAYERS+1] = {false};
 
@@ -47,7 +48,7 @@ public void OnPluginStart()
 {
 	CreateConVar("l4d2_karma_jump_discord_version", PLUGIN_VERSION, "Karma Jump Discord Version", FCVAR_REPLICATED | FCVAR_SPONLY | FCVAR_DONTRECORD | FCVAR_NOTIFY);
 
-	HookEvent("bot_player_replace", event_PlayerReplacesABot, EventHookMode_Post);
+	//HookEvent("bot_player_replace", event_PlayerReplacesABot, EventHookMode_Post);
 	HookEvent("player_bot_replace", event_BotReplacesAPlayer, EventHookMode_Post);
 }
 
@@ -78,10 +79,10 @@ public void OnAllPluginsLoaded()
 
 public void OnClientPostAdminCheck(int client)
 {
-	IsAdmin(client);
+	AdminCheck(client);
 }
 
-void IsAdmin(int client)
+void AdminCheck(int client)
 {
 	char s_flags[32];
 	GetConVarString(Convar_AdminFlags, s_flags, sizeof(s_flags));
@@ -138,14 +139,27 @@ public Action event_BotReplacesAPlayer(Handle event, const char[] name, bool don
 	return Plugin_Continue;
 }
 
+public void OnClientAuthorized(int client)
+{
+	if (IsFakeClient(client)) return;
+
+	g_bFirstTimeSpawned[client] = false;
+}
+
 public Action event_PlayerReplacesABot(Handle event, const char[] name, bool dontBroadcast)
 {
 	int newPlayer = GetClientOfUserId(GetEventInt(event, "player"));
 
-	char sAuthId[64];
-	GetClientAuthId(newPlayer, AuthId_Steam2, sAuthId, sizeof(sAuthId));
+	if (!g_bFirstTimeSpawned[newPlayer])
+	{
+		char sAuthId[64];
+		GetClientAuthId(newPlayer, AuthId_Steam2, sAuthId, sizeof(sAuthId));
 
-	g_smLogins.SetValue(sAuthId, GetGameTime());
+		g_smLogins.SetValue(sAuthId, GetGameTime());
+		g_bFirstTimeSpawned[newPlayer] = true;
+		return Plugin_Continue;
+	}
+
 	return Plugin_Continue;
 }
 
@@ -252,6 +266,12 @@ public void KarmaKillSystem_OnKarmaJumpPost(int victim, float lastPos[3], int ju
 		GetKarmaPrefix(sPrefix, sizeof(sPrefix));
 
 		PrintToChatAll("%s\x03The most recent suicide jumper got Karma Banned, for great justice!!", sPrefix);
+	}
+	else
+	{
+		char sAuthId[64];
+		GetClientAuthId(victim, AuthId_Steam2, sAuthId, sizeof(sAuthId));
+		g_smLogins.SetValue(sAuthId, GetGameTime());
 	}
 }
 
