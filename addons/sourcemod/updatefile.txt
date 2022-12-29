@@ -2,7 +2,7 @@
 {
 	"Version"
 	{
-		"Latest"	"4.3"
+		"Latest"	"4.4"
 	}
 	
 	"Notes"	"Added option to grant ban-immunity to players with admin flags (configurable with a ConVar)"
