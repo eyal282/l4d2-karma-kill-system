@@ -48,7 +48,7 @@ public void OnPluginStart()
 {
 	CreateConVar("l4d2_karma_jump_discord_version", PLUGIN_VERSION, "Karma Jump Discord Version", FCVAR_REPLICATED | FCVAR_SPONLY | FCVAR_DONTRECORD | FCVAR_NOTIFY);
 
-	//HookEvent("bot_player_replace", event_PlayerReplacesABot, EventHookMode_Post);
+	HookEvent("bot_player_replace", event_PlayerReplacesABot, EventHookMode_Post);
 	HookEvent("player_bot_replace", event_BotReplacesAPlayer, EventHookMode_Post);
 }
 
