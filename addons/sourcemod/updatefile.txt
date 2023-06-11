@@ -2,10 +2,10 @@
 {
 	"Version"
 	{
-		"Latest"	"4.4"
+		"Latest"	"4.5"
 	}
 	
-	"Notes"	"Added option to grant ban-immunity to players with admin flags (configurable with a ConVar)"
+	"Notes"	"Added NoKarma zone type"
 }
 	
 "Files"
