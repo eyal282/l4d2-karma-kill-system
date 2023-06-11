@@ -16,7 +16,7 @@
 #define UPDATE_URL      "https://raw.githubusercontent.com/eyal282/l4d2-karma-kill-system/master/addons/sourcemod/updatefile.txt"
 #define L4DH_UPDATE_URL "https://raw.githubusercontent.com/SilvDev/Left4DHooks/main/sourcemod/updater.txt"
 
-#define PLUGIN_VERSION "4.4"
+#define PLUGIN_VERSION "4.5"
 
 // TEST_DEBUG is always 1 if the server's name contains "Test Server"
 bool TEST_DEBUG = false;
@@ -162,6 +162,9 @@ public void fuckZones_OnStartTouchZone_Post(int client, int entity, const char[]
 void OnCheckKarmaZoneTouch(int victim, int entity, const char[] zone_name, int pinner = 0)
 {
 	if (!IsPlayerAlive(victim) || L4D_IsPlayerGhost(victim))
+		return;
+
+	if (StrContains(zone_name, "NoKarma", false) != -1)
 		return;
 
 	// This is for bad out of bounds areas that we don't want to exist.
