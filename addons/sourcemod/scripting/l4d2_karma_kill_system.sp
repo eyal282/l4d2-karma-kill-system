@@ -165,6 +165,7 @@ void OnCheckKarmaZoneTouch(int victim, int entity, const char[] zone_name, int p
 	if (!IsPlayerAlive(victim) || L4D_IsPlayerGhost(victim))
 		return;
 
+	PrintToChatEyal(zone_name);
 	// This is for bad out of bounds areas that we don't want to exist.
 	if (StrContains(zone_name, "ForcePummel", false) != -1)
 	{
