@@ -6,7 +6,7 @@
 
 #undef REQUIRE_PLUGIN
 #undef REQUIRE_EXTENSIONS
-#tryinclude <fuckZones>
+#include <fuckZones>
 #tryinclude < updater>    // Comment out this line to remove updater support by force.
 #define REQUIRE_PLUGIN
 #define REQUIRE_EXTENSIONS
@@ -17,7 +17,7 @@
 #define UPDATE_URL      "https://raw.githubusercontent.com/eyal282/l4d2-karma-kill-system/master/addons/sourcemod/updatefile.txt"
 #define L4DH_UPDATE_URL "https://raw.githubusercontent.com/SilvDev/Left4DHooks/main/sourcemod/updater.txt"
 
-#define PLUGIN_VERSION "4.5"
+#define PLUGIN_VERSION "4.6"
 
 // TEST_DEBUG is always 1 if the server's name contains "Test Server"
 bool TEST_DEBUG = false;
