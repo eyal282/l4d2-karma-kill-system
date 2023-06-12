@@ -6,6 +6,7 @@
 
 #undef REQUIRE_PLUGIN
 #undef REQUIRE_EXTENSIONS
+#tryinclude <fuckZones>
 #tryinclude < updater>    // Comment out this line to remove updater support by force.
 #define REQUIRE_PLUGIN
 #define REQUIRE_EXTENSIONS
@@ -162,9 +163,6 @@ public void fuckZones_OnStartTouchZone_Post(int client, int entity, const char[]
 void OnCheckKarmaZoneTouch(int victim, int entity, const char[] zone_name, int pinner = 0)
 {
 	if (!IsPlayerAlive(victim) || L4D_IsPlayerGhost(victim))
-		return;
-
-	if (StrContains(zone_name, "NoKarma", false) != -1)
 		return;
 
 	// This is for bad out of bounds areas that we don't want to exist.
@@ -741,6 +739,9 @@ public Action Timer_CheckVictim(Handle timer, DataPack DP)
 		victimTimer[client].dp    = null;
 		return Plugin_Stop;
 	}
+
+	else if(UC_IsClientInZone(client, "NoKarma", false, false))
+		return Plugin_Continue;
 
 	else if (L4D_GetAttackerSmoker(client) > 0)
 		return Plugin_Continue;
@@ -1810,6 +1811,9 @@ public Action Timer_CheckCharge(Handle timer, any client)
 		return Plugin_Stop;
 	}
 
+	if(UC_IsClientInZone(client, "NoKarma", false, false))
+		return Plugin_Continue;
+
 	int victim = GetCarryVictim(client);
 
 	if (victim == -1)
@@ -2618,8 +2622,6 @@ stock bool IsDoubleCharged(int victim)
 	return count >= 2;
 }
 
-// Todo: check if clearing with netprops causes the jockey teleport to shadow realm bug.
-// WARNING!!! This will permanently freeze the victim, but I'm killing him so IDGAF.
 stock void ClearAllPinners(int victim)
 {
 	for (int i = 1; i <= MaxClients; i++)
@@ -3120,4 +3122,12 @@ stock void TransferKarmaToVictim(int toVictim, int fromVictim)
 	}
 
 	DettachKarmaFromVictim(fromVictim, KarmaType_MAX);
+}
+
+stock bool UC_IsClientInZone(int client, char[] zone_name, bool equals = true, bool caseSensitive = false)
+{
+	if(GetFeatureStatus(FeatureType_Native, "Zone_IsClientInZone") != FeatureStatus_Available)
+		return false;
+
+	return Zone_IsClientInZone(client, zone_name, equals, caseSensitive);
 }
