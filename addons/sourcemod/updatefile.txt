@@ -2,7 +2,7 @@
 {
 	"Version"
 	{
-		"Latest"	"4.5"
+		"Latest"	"4.7"
 	}
 	
 	"Notes"	"Added NoKarma zone type"
