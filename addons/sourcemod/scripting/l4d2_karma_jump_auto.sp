@@ -314,9 +314,9 @@ public void Frame_Respawn(Handle DP)
 
 	for (int i = 0; i < num; i++)
 	{
-		int weapon = EntRefToEntIndex(weapons[i]);
+		int weapon = weapons[i];
 
-		if (weapon != INVALID_ENT_REFERENCE)
+		if (IsValidEdict(weapon))
 		{
 			EquipPlayerWeapon(victim, weapon);
 		}
