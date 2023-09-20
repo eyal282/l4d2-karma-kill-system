@@ -17,7 +17,7 @@
 #define UPDATE_URL      "https://raw.githubusercontent.com/eyal282/l4d2-karma-kill-system/master/addons/sourcemod/updatefile.txt"
 #define L4DH_UPDATE_URL "https://raw.githubusercontent.com/SilvDev/Left4DHooks/main/sourcemod/updater.txt"
 
-#define PLUGIN_VERSION "4.6"
+#define PLUGIN_VERSION "4.8"
 
 // TEST_DEBUG is always 1 if the server's name contains "Test Server"
 bool TEST_DEBUG = false;
@@ -45,6 +45,7 @@ char  SOUND_EFFECT[]         = "./level/loud/climber.wav";
 Handle cvarisEnabled                    = INVALID_HANDLE;
 Handle cvarNoFallDamageOnCarry          = INVALID_HANDLE;
 Handle cvarNoFallDamageProtectFromIncap = INVALID_HANDLE;
+Handle cvarTeleportFix 			= INVALID_HANDLE;
 
 Handle karmaPrefix               = INVALID_HANDLE;
 Handle karmaJump                 = INVALID_HANDLE;
@@ -52,6 +53,7 @@ Handle karmaAwardConfirmed       = INVALID_HANDLE;
 Handle karmaDamageAwardConfirmed = INVALID_HANDLE;
 Handle karmaOnlyConfirmed        = INVALID_HANDLE;
 Handle karmaBirdCharge           = INVALID_HANDLE;
+Handle karmaAnnounceDelay     = INVALID_HANDLE;
 Handle karmaSlowTimeOnServer     = INVALID_HANDLE;
 Handle karmaSlowTimeOnCouple     = INVALID_HANDLE;
 Handle karmaSlow                 = INVALID_HANDLE;
@@ -63,6 +65,7 @@ Handle cvarFatalFallDamage = INVALID_HANDLE;
 bool   isEnabled           = true;
 
 Handle fw_OnKarmaEventPost = INVALID_HANDLE;
+Handle fw_OnRPGKarmaEventPost = INVALID_HANDLE;
 Handle fw_OnKarmaJumpPost  = INVALID_HANDLE;
 
 enum
@@ -165,7 +168,6 @@ void OnCheckKarmaZoneTouch(int victim, int entity, const char[] zone_name, int p
 	if (!IsPlayerAlive(victim) || L4D_IsPlayerGhost(victim))
 		return;
 
-	PrintToChatEyal(zone_name);
 	// This is for bad out of bounds areas that we don't want to exist.
 	if (StrContains(zone_name, "ForcePummel", false) != -1)
 	{
@@ -332,6 +334,12 @@ public void OnPluginStart()
 	HookEvent("round_start", event_RoundStart, EventHookMode_Post);
 	HookEvent("round_end", event_RoundEnd, EventHookMode_Post);
 
+	HookEvent("pounce_end", event_VictimFreeFromPinPre, EventHookMode_Pre);
+	HookEvent("tongue_release", event_VictimFreeFromPinPre, EventHookMode_Pre);
+	HookEvent("jockey_ride_end", event_VictimFreeFromPinPre, EventHookMode_Pre);
+	HookEvent("charger_carry_end", event_VictimFreeFromPinPre, EventHookMode_Pre);
+	HookEvent("charger_pummel_end", event_VictimFreeFromPinPre, EventHookMode_Pre);
+
 	AutoExecConfig_SetFile("l4d2_karma_kill_system");
 
 	CreateConVar("l4d2_karma_charge_version", PLUGIN_VERSION, " L4D2 Karma Charge Plugin Version ", FCVAR_DONTRECORD);
@@ -342,12 +350,14 @@ public void OnPluginStart()
 	karmaDamageAwardConfirmed        = AutoExecConfig_CreateConVar("l4d2_karma_damage_award_confirmed", "300", "Damage to award on confirmed kills, or -1 to disable. Requires l4d2_karma_award_confirmed set to 1");
 	karmaOnlyConfirmed               = AutoExecConfig_CreateConVar("l4d2_karma_only_confirmed", "0", "Whenever or not to make karma announce only happen upon death.");
 	karmaBirdCharge                  = AutoExecConfig_CreateConVar("l4d2_karma_kill_bird", "1", "Whether or not to enable bird charges, which are unlethal height charges.");
+	karmaAnnounceDelay                  = AutoExecConfig_CreateConVar("l4d2_karma_announce_delay", "0", "Delay until karma is announced. Use this if you want to make abrusdly slow slow-motion.");
 	karmaSlowTimeOnServer            = AutoExecConfig_CreateConVar("l4d2_karma_kill_slowtime_on_server", "5.0", " How long does Time get slowed for the server");
 	karmaSlowTimeOnCouple            = AutoExecConfig_CreateConVar("l4d2_karma_kill_slowtime_on_couple", "3.0", " How long does Time get slowed for the karma couple");
 	karmaSlow                        = AutoExecConfig_CreateConVar("l4d2_karma_kill_slowspeed", "0.2", " How slow Time gets. Hardwired to minimum 0.03 or the server crashes", _, true, 0.03);
 	cvarisEnabled                    = AutoExecConfig_CreateConVar("l4d2_karma_kill_enabled", "1", " Turn Karma Kills on and off ");
 	cvarNoFallDamageOnCarry          = AutoExecConfig_CreateConVar("l4d2_karma_kill_no_fall_damage_on_carry", "1", "Fixes this by disabling fall damage when carried: https://streamable.com/xuipb6");
 	cvarNoFallDamageProtectFromIncap = AutoExecConfig_CreateConVar("l4d2_karma_kill_no_fall_damage_protect_from_incap", "1", "If you take more than 224 points of damage while incapacitated, you die.");
+	cvarTeleportFix = AutoExecConfig_CreateConVar("l4d2_karma_kill_teleport_fix", "1", "Removes slow down if you're unpinned to protect from bot teleportation");
 	cvarModeSwitch                   = AutoExecConfig_CreateConVar("l4d2_karma_kill_slowmode", "0", " 0 - Entire Server gets slowed, 1 - Only Charger and Survivor do", _, true, 0.0, true, 1.0);
 	cvarCooldown                     = AutoExecConfig_CreateConVar("l4d2_karma_kill_cooldown", "0.0", "If slowmode is 0, how long does it take for the next karma to freeze the entire map. Begins counting from the end of the previous freeze");
 	cvarAllowDefib                   = AutoExecConfig_CreateConVar("l4d2_karma_kill_allow_defib", "0", " Allow karma victims to be revived with defibrillator? 0 - No, 1 - Yes.", _, true, 0.0, true, 1.0);
@@ -361,6 +371,7 @@ public void OnPluginStart()
 	AutoExecConfig_CleanFile();
 
 	fw_OnKarmaEventPost = CreateGlobalForward("KarmaKillSystem_OnKarmaEventPost", ET_Ignore, Param_Cell, Param_Cell, Param_String, Param_Cell, Param_Cell, Param_Cell);
+	fw_OnRPGKarmaEventPost = CreateGlobalForward("KarmaKillSystem_OnRPGKarmaEventPost", ET_Ignore, Param_Cell, Param_Cell, Param_String, Param_Array, Param_Array, Param_Array, Param_Cell, Param_String, Param_String);
 	fw_OnKarmaJumpPost  = CreateGlobalForward("KarmaKillSystem_OnKarmaJumpPost", ET_Ignore, Param_Cell, Param_Array, Param_Array, Param_Array, Param_Cell, Param_String, Param_String);
 
 	HookConVarChange(cvarisEnabled, _cvarChange);
@@ -407,6 +418,25 @@ public void OnPluginStart()
 
  */
 forward void KarmaKillSystem_OnKarmaEventPost(int victim, int attacker, const char[] KarmaName, bool bBird, bool bKillConfirmed, bool bOnlyConfirmed);
+
+/**
+ * Description
+ *
+ * @param victim             Player who got killed by the karma event. This can be anybody. Useful to revive the victim.
+ * @param attacker           Artist that crafted the karma event. The only way to check if attacker is valid is: if(attacker > 0)
+ * @param KarmaName          Name of karma: "Charge", "Impact", "Jockey", "Slap", "Punch", "Smoke", "Jump"
+ * @param lastPos            Origin from which the jump began.
+ * @param jumperWeapons		 Weapon Refs of the jumper at the moment of the jump. Every invalid slot is -1
+ * @param jumperHealth    	 jumperHealth[0] and jumperHealth[1] = Health and Temp health from which the jump began.
+ * @param jumperTimestamp    Timestamp from which the jump began.
+ * @param jumperSteamId      jumper's Steam ID.
+ * @param jumperName     	 jumper's name
+
+ * @note					 Some values may be exclusive to karma jumps, but all values needed to respawn the player are guaranteed to be there in every karma.
+ * @noreturn
+
+ */
+forward void KarmaKillSystem_OnRPGKarmaEventPost(int victim, int attacker, const char[] KarmaName, float lastPos[3], int jumperWeapons[64], int jumperHealth[2], float jumperTimestamp, char[] jumperSteamId, char[] jumperName);
 
 /**
  * Description
@@ -1089,6 +1119,20 @@ public Action event_RoundEnd(Handle event, const char[] name, bool dontBroadcast
 	return Plugin_Continue;
 }
 
+public Action event_VictimFreeFromPinPre(Handle event, const char[] name, bool dontBroadcast)
+{
+	int victim = GetClientOfUserId(GetEventInt(event, "victim"));
+
+	if (victim == 0)
+		return Plugin_Continue;
+
+	else if(!GetConVarBool(cvarTeleportFix))
+		return Plugin_Continue;
+
+	SetEntPropFloat(victim, Prop_Send, "m_flLaggedMovementValue", 1.0);
+
+	return Plugin_Continue;	
+}
 public void FixChargeTimeleftBug()
 {
 	for (int i = 1; i <= MaxClients; i++)
@@ -1541,7 +1585,7 @@ public Action event_PlayerJump(Handle event, const char[] name, bool dontBroadca
 	if (!isEnabled || !victim || L4D_GetClientTeam(victim) != L4DTeam_Survivor)
 		return Plugin_Continue;
 
-	AttachKarmaToVictim(victim, victim, KT_Jump, true);
+	AttachKarmaToVictim(victim, victim, KT_Jump);
 
 	if (JumpRegisterTimer[victim] != INVALID_HANDLE)
 	{
@@ -1995,8 +2039,11 @@ public bool TraceEnum_TriggerHurt(int entity, ArrayList aEntities)
 // In that case, client = -1 * zombieclass
 void AnnounceKarma(int client, int victim, int type, bool bBird, bool bKillConfirmed, Handle hDontKillHandle = INVALID_HANDLE, Handle hDontKillHandle2 = INVALID_HANDLE)
 {
-	char KarmaName[64];
-	FormatEx(KarmaName, sizeof(KarmaName), karmaNames[type]);
+	float fDelay = GetConVarFloat(karmaAnnounceDelay);
+
+	if(bKillConfirmed)
+		fDelay = 0.0;
+
 
 	if (victimTimer[victim].timer != INVALID_HANDLE && hDontKillHandle != victimTimer[victim].timer && hDontKillHandle2 != victimTimer[victim].timer)
 	{
@@ -2025,6 +2072,41 @@ void AnnounceKarma(int client, int victim, int type, bool bBird, bool bKillConfi
 
 	// Enforces a one karma per 15 seconds per victim, exlcuding height checkers.
 	BlockRegisterTimer[victim] = CreateTimer(15.0, RegisterCaptorDelay, victim);
+
+	DataPack DP;
+
+	Handle hTimer;
+
+	if(fDelay == 0.0)
+		hTimer = CreateDataTimer(0.1, Timer_AnnounceKarma, DP, TIMER_FLAG_NO_MAPCHANGE);
+
+	else
+		hTimer = CreateDataTimer(fDelay, Timer_AnnounceKarma, DP, TIMER_FLAG_NO_MAPCHANGE);
+
+	WritePackCell(DP, client);
+	WritePackCell(DP, victim);
+	WritePackCell(DP, type);
+	WritePackCell(DP, bBird);
+	WritePackCell(DP, bKillConfirmed);
+
+	if(fDelay == 0.0)
+		TriggerTimer(hTimer);
+
+}
+
+public Action Timer_AnnounceKarma(Handle hTimer, Handle DP)
+{
+	ResetPack(DP);
+
+	
+	int client = ReadPackCell(DP);
+	int victim = ReadPackCell(DP);
+	int type = ReadPackCell(DP);
+	bool bBird = ReadPackCell(DP);
+	bool bKillConfirmed = ReadPackCell(DP);
+
+	char KarmaName[64];
+	FormatEx(KarmaName, sizeof(KarmaName), karmaNames[type]);
 
 	bool bWasBlocked = BlockAnnounce[victim] && (!GetConVarBool(karmaOnlyConfirmed) || bKillConfirmed);
 
@@ -2083,6 +2165,23 @@ void AnnounceKarma(int client, int victim, int type, bool bBird, bool bKillConfi
 		Call_PushCell(GetConVarBool(karmaOnlyConfirmed));
 
 		Call_Finish();
+
+		if(bKillConfirmed)
+		{
+			Call_StartForward(fw_OnRPGKarmaEventPost);
+
+			Call_PushCell(victim);
+			Call_PushCell(victim);
+			Call_PushString(KarmaName);
+			Call_PushArray(LastKarma[victim][type].lastPos, 3);
+			Call_PushArray(LastKarma[victim][type].artistWeapons, 64);
+			Call_PushArray(LastKarma[victim][type].artistHealth, 2);
+			Call_PushCell(LastKarma[victim][type].artistTimestamp);
+			Call_PushString(LastKarma[victim][type].artistSteamId);
+			Call_PushString(LastKarma[victim][type].artistName);
+
+			Call_Finish();
+		}
 	}
 	else
 	{
@@ -2092,6 +2191,20 @@ void AnnounceKarma(int client, int victim, int type, bool bBird, bool bKillConfi
 
 			Call_PushCell(victim);
 
+			Call_PushArray(LastKarma[victim][type].lastPos, 3);
+			Call_PushArray(LastKarma[victim][type].artistWeapons, 64);
+			Call_PushArray(LastKarma[victim][type].artistHealth, 2);
+			Call_PushCell(LastKarma[victim][type].artistTimestamp);
+			Call_PushString(LastKarma[victim][type].artistSteamId);
+			Call_PushString(LastKarma[victim][type].artistName);
+
+			Call_Finish();
+
+			Call_StartForward(fw_OnRPGKarmaEventPost);
+
+			Call_PushCell(victim);
+			Call_PushCell(victim);
+			Call_PushString(KarmaName);
 			Call_PushArray(LastKarma[victim][type].lastPos, 3);
 			Call_PushArray(LastKarma[victim][type].artistWeapons, 64);
 			Call_PushArray(LastKarma[victim][type].artistHealth, 2);
@@ -2119,6 +2232,8 @@ void AnnounceKarma(int client, int victim, int type, bool bBird, bool bKillConfi
 		// Kill confirmed, remove every single karma artist.
 		DettachKarmaFromVictim(victim, KarmaType_MAX);
 	}
+
+	return Plugin_Stop;
 }
 
 // This does nothing except avoid double freezing of time.
@@ -2132,7 +2247,9 @@ public Action RestoreSlowmo(Handle Timer)
 stock void SlowKarmaCouple(int victim, int attacker, char[] sKarmaName)
 {
 	// Karma can register a lot of time after the register because of ledge hang, so no random slowdowns...
-	if (StrEqual(sKarmaName, "Charge") && attacker > 0 && IsPlayerAlive(attacker))
+
+	// Check IsClientInGame on attacker because he may leave if it's a bot.
+	if (StrEqual(sKarmaName, "Charge") && attacker > 0 && IsClientInGame(attacker) && IsPlayerAlive(attacker))
 		SetEntPropFloat(attacker, Prop_Send, "m_flLaggedMovementValue", GetConVarFloat(karmaSlow));
 
 	SetEntPropFloat(victim, Prop_Send, "m_flLaggedMovementValue", GetConVarFloat(karmaSlow));
@@ -2140,7 +2257,7 @@ stock void SlowKarmaCouple(int victim, int attacker, char[] sKarmaName)
 	Handle data = CreateDataPack();
 	WritePackCell(data, GetClientUserId(victim));
 
-	if (StrEqual(sKarmaName, "Charge") && attacker > 0 && IsPlayerAlive(attacker))
+	if (StrEqual(sKarmaName, "Charge") && attacker > 0 && IsClientInGame(attacker) && IsPlayerAlive(attacker))
 		WritePackCell(data, GetClientUserId(attacker));
 
 	else
@@ -2997,34 +3114,31 @@ stock bool Takeovers_PointToSteamId(int firstSnowflake, Handle snapshot, const c
 
 */
 
-stock void AttachKarmaToVictim(int victim, int attacker, int type, bool bLastPos = false)
+stock void AttachKarmaToVictim(int victim, int attacker, int type)
 {
 	LastKarma[victim][type].artist = attacker;
 	GetClientName(attacker, LastKarma[victim][type].artistName, sizeof(enLastKarma::artistName));
 	GetClientAuthId(attacker, AuthId_Steam2, LastKarma[victim][type].artistSteamId, sizeof(enLastKarma::artistSteamId));
 
-	if (bLastPos)
+	GetClientAbsOrigin(victim, LastKarma[victim][type].lastPos);
+	LastKarma[victim][type].artistTimestamp = GetGameTime();
+	LastKarma[victim][type].artistHealth[0] = GetEntityHealth(victim);
+	LastKarma[victim][type].artistHealth[1] = L4D_GetPlayerTempHealth(victim);
+
+	int num = 0;
+
+	for (int i = 0; i < sizeof(enLastKarma::artistWeapons); i++)
 	{
-		GetClientAbsOrigin(victim, LastKarma[victim][type].lastPos);
-		LastKarma[victim][type].artistTimestamp = GetGameTime();
-		LastKarma[victim][type].artistHealth[0] = GetEntityHealth(victim);
-		LastKarma[victim][type].artistHealth[1] = L4D_GetPlayerTempHealth(victim);
+		LastKarma[victim][type].artistWeapons[i] = -1;
+	}
 
-		int num = 0;
+	for (int i = 0; i < GetEntPropArraySize(victim, Prop_Send, "m_hMyWeapons"); i++)
+	{
+		int weapon = GetEntPropEnt(victim, Prop_Send, "m_hMyWeapons", i);
 
-		for (int i = 0; i < sizeof(enLastKarma::artistWeapons); i++)
+		if (weapon != -1)
 		{
-			LastKarma[victim][type].artistWeapons[i] = -1;
-		}
-
-		for (int i = 0; i < GetEntPropArraySize(victim, Prop_Send, "m_hMyWeapons"); i++)
-		{
-			int weapon = GetEntPropEnt(victim, Prop_Send, "m_hMyWeapons", i);
-
-			if (weapon != -1)
-			{
-				LastKarma[victim][type].artistWeapons[num++] = EntIndexToEntRef(weapon);
-			}
+			LastKarma[victim][type].artistWeapons[num++] = EntIndexToEntRef(weapon);
 		}
 	}
 }
